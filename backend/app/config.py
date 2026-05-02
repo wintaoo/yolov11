@@ -1,5 +1,8 @@
 import os
 import logging
+from dotenv import load_dotenv, find_dotenv
+
+load_dotenv(find_dotenv())
 
 BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
@@ -11,7 +14,7 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev'
-    DEBUG = True
+    DEBUG = os.environ.get('DEBUG', 'true').lower() == 'true'
 
     BASE_DIR = BASE_DIR
     ROOT_DIR = os.path.dirname(BASE_DIR)
@@ -25,9 +28,9 @@ class Config:
     API_PREFIX = '/api'
     MAX_CONTENT_LENGTH = 200 * 1024 * 1024
 
-    SILICONFLOW_API_KEY = os.environ.get('SILICONFLOW_API_KEY') or 'sk-ryoqxzjolunrurqpdxghyqdkfdlmstexhhotlkofwzhbxjjs'
-    SILICONFLOW_API_URL = os.environ.get('SILICONFLOW_API_URL') or 'https://api.siliconflow.cn/v1/chat/completions'
-    SILICONFLOW_VISION_MODEL = 'zai-org/GLM-4.6V'
+    SILICONFLOW_API_KEY = os.environ.get('SILICONFLOW_API_KEY', '')
+    SILICONFLOW_API_URL = os.environ.get('SILICONFLOW_API_URL', 'https://api.siliconflow.cn/v1/chat/completions')
+    SILICONFLOW_VISION_MODEL = os.environ.get('SILICONFLOW_VISION_MODEL', 'zai-org/GLM-4.6V')
 
     LOG_LEVEL = logging.INFO
     LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

@@ -14,6 +14,7 @@ import requests
 import json
 from backend.app.services.detection import detection_service
 from backend.app.services.rules_checker import RulesChecker
+from backend.app.config import Config
 
 # 初始化规则检查器
 rules_checker = RulesChecker()
@@ -134,15 +135,11 @@ CLASS_MAPPING = {
     "toilet": "厕所"
 }
 
-# 硅基流动API配置
-SILICONFLOW_API_KEY = "sk-njosapcjncszdpwwwydlmixtsapjmvwnoohaeigaabkhwlgy"
-SILICONFLOW_API_URL = "https://api.siliconflow.com/v1/chat/completions"
-
 def analyze_image_with_siliconflow(image_base64):
     """使用硅基流动API分析图片"""
     try:
         headers = {
-            "Authorization": f"Bearer {SILICONFLOW_API_KEY}",
+            "Authorization": f"Bearer {Config.SILICONFLOW_API_KEY}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
@@ -177,10 +174,10 @@ def analyze_image_with_siliconflow(image_base64):
         
         logger.info("正在发送API请求...")
         response = requests.post(
-            SILICONFLOW_API_URL, 
+            Config.SILICONFLOW_API_URL, 
             headers=headers, 
             json=payload,
-            timeout=30  # 添加超时设置
+            timeout=30
         )
         response.raise_for_status()
         

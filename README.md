@@ -1,281 +1,173 @@
-# Intelligent Building Object Recognition 施工规范检测系统
+# 海南机器管招投标项目 - 建筑图纸分析系统
 
-## 项目简介
-这是一个基于计算机视觉模型的施工规范检测系统，用于自动识别和检测施工现场中的违规行为和安全隐患。系统采用前后端分离架构，集成了深度学习模型训练、目标检测服务和Web可视化界面，为施工现场安全管理提供智能化解决方案。
+基于计算机视觉与大模型技术的建筑工程图纸智能分析系统，支持多模型 YOLO 目标检测、施工规范规则检查、Word 文档图纸提取与多模态 AI 分析。
 
-### 主要特点
-- 支持多种施工场景目标检测，包括设施、建筑、设备等
-- 实时违规行为识别和安全隐患预警
-- 基于Vue3的现代化Web界面，提供友好的用户体验
-- 支持批量图片处理和文件夹导入
-- 支持中英文双语检测结果展示
+## 功能概览
 
-## 项目架构
-
-```
-├── backend/          # 后端服务
-│   ├── app/         # API应用
-│   ├── config/      # 配置文件
-│   ├── core/        # 核心模块
-│   ├── models/      # 模型文件
-│   ├── services/    # 服务模块
-│   └── utils/       # 工具模块
-├── frontend/        # 前端界面
-│   ├── src/         # 源代码
-│   └── public/      # 静态资源
-└── training/        # 模型训练
-    ├── data/        # 训练数据
-    └── models/      # 训练模型
-```
-
-## 核心功能
-
-### 1. 模型训练模块
-- 支持自定义数据集训练
-- 提供预训练模型
-- 支持模型评估和验证
-- 训练过程可视化
-
-### 2. 目标检测API服务
-- RESTful API接口，支持图片上传和批量处理
-- 基于YOLO模型的实时图像目标检测
-- 智能规则引擎进行违规行为识别
-- 优化的规则检查系统，支持以下规则类别：
-  - 基础设施规则：钢筋加工场设置和位置要求
-  - 塔吊相关规则：覆盖范围和安全要求
-  - 道路和通行规则：大门和道路连接要求
-  - 安全和消防规则：消防设施和场地布局要求
-  - 材料堆场规则：位置和安全距离要求
-- 支持12类工地特定目标检测，包括：
-  - 起重机、塔吊、挖掘机等大型设备
-  - 施工人员和安全设施
-  - 危险区域和警戒线
-- 检测结果JSON格式输出，支持坐标框、置信度等信息
-
-### 3. 前端可视化界面
-- 基于Vue3 + Element Plus的现代化界面
-- 文件树结构支持文件夹批量导入和管理
-- 图片检测结果实时预览和对比
-- 支持检测结果导出和清除
-- 智能规则检查结果展示
-- 网络状态和模型加载状态监控
-- 支持图片导航和批量处理
-- 响应式设计，适配不同屏幕尺寸
+| 模块 | 功能 | 技术 |
+|------|------|------|
+| 图片检测 | YOLO 目标检测 + 施工规范规则检查 | YOLOv11 + Shapely |
+| 文档分析 | .docx 图纸提取 + 多模态 AI 分析 | python-docx + GLM-4.6V |
+| 前端界面 | 对比视图、胶片导航、分类统计 | Vue 3 + Element Plus |
 
 ## 快速开始
 
 ### 环境要求
+
 - Python 3.8+
-- Node.js 14+
-- CUDA 11.0+（用于GPU训练）
+- Node.js 16+
+- CUDA 11.0+ (仅 GPU 推理需要)
 
-### 安装步骤
+### 安装
 
-1. 克隆项目
 ```bash
-git clone [项目地址]
+git clone https://github.com/wintaoo/yolov11.git
 cd yolov11
 ```
 
-2. 安装后端依赖
+**后端**
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
-3. 安装前端依赖
+**前端**
 ```bash
 cd frontend
 npm install
 ```
 
-### 启动服务
-
-1. 使用start.sh脚本一键启动所有服务
+**配置**
 ```bash
-./start.sh
+# 复制环境变量模板，填入你的 SiliconFlow API Key
+cp .env.example .env
+# 编辑 .env，设置 SILICONFLOW_API_KEY
+
+# 放置 YOLO 模型文件
+# 将 best.pt 放到 backend/models/
 ```
 
-该脚本会自动：
-- 检查并清理已占用的端口（5000和8080）
-- 启动后端Flask服务（端口5000）
-- 启动前端开发服务器（端口8080）
-- 设置进程监控和自动清理
+### 启动
 
-2. 或手动分别启动服务
-
-后端服务：
+**一键启动 (Windows)**
 ```bash
+start.bat
+```
+
+**手动启动**
+```bash
+# 后端 (终端 1)
 cd backend
 python run.py
-```
 
-前端服务：
-```bash
+# 前端 (终端 2)
 cd frontend
 npm run dev
 ```
 
-## 使用说明
+访问 http://localhost:8080
 
-### 模型训练
-1. 准备数据集
-2. 修改配置文件
-3. 执行训练脚本
-4. 评估模型效果
+### 停止服务 (Windows)
+```bash
+stop.bat
+```
 
-### API接口说明
+## 项目结构
 
-#### 检测相关接口
-- POST /api/detect - 上传图片进行目标检测
-  - 支持文件上传
-  - 返回检测结果，包含目标位置和类别信息
+```
+yolov11/
+├── backend/                    # 后端服务
+│   ├── app/
+│   │   ├── api/               # API 路由
+│   │   │   ├── detection.py    # 检测相关 API
+│   │   │   └── docx.py         # 文档分析 API
+│   │   ├── services/          # 业务逻辑层
+│   │   │   ├── detection.py    # YOLO 检测服务
+│   │   │   ├── rules_checker.py # 施工规范检查
+│   │   │   ├── docx_service.py # Word 文档解析
+│   │   │   └── ai_analysis_service.py # 多模态 AI 分析
+│   │   ├── utils/             # 工具模块
+│   │   ├── main.py            # 主蓝图 (兼容路由)
+│   │   └── config.py          # 配置管理
+│   ├── models/                # 模型文件目录
+│   ├── uploads/               # 上传文件暂存
+│   ├── docx_images/           # 文档提取图片
+│   └── run.py                 # 启动入口
+├── frontend/                   # 前端界面
+│   └── src/
+│       ├── components/
+│       │   ├── DetectionPanel.vue  # 图片检测面板
+│       │   └── DocumentAnalysis.vue # 文档分析面板
+│       └── App.vue                 # 主布局
+├── training/                  # 模型训练
+│   └── config/
+│       └── cad2024.yaml       # 训练配置
+├── demos/                     # 演示数据与工具
+│   ├── demophotos/            # 示例施工图纸
+│   └── demodocx/              # 示例 Word 文档
+├── docs/                      # 文档
+│   ├── SYSTEM_DESIGN.md       # 系统设计文档
+│   ├── USER_MANUAL.md         # 使用说明书
+│   └── API.md                 # API 文档
+├── scripts/                   # 工具脚本
+├── .env.example               # 环境变量模板
+├── start.bat / stop.bat       # 启动/停止脚本
+└── .gitignore
+```
 
-#### 系统状态接口
-- GET /api/detection/model/status - 获取模型加载状态
-  - 返回当前模型信息和加载状态
-- GET /api/network_check - 检查网络连接状态
-  - 测试硅基流动API连接性
+## 主要技术栈
 
-#### 规则检查接口
-- POST /api/check-rules - 执行施工规范检查
-  - 基于检测结果进行规则分析
-  - 返回违规项和建议
-  - 支持多维度规则检查：
-    - 场地布局合规性检查
-    - 设备设施位置关系检查
-    - 安全距离和覆盖范围检查
-    - 危险区域隔离检查
+| 层次 | 技术 |
+|------|------|
+| 后端框架 | Python 3.8+ / Flask |
+| AI 推理 | ultralytics YOLOv11 / PyTorch |
+| 视觉模型 | zai-org/GLM-4.6V (SiliconFlow API) |
+| 文本模型 | Qwen2.5-7B-Instruct (SiliconFlow API) |
+| 文档解析 | python-docx / PIL / lxml |
+| 几何计算 | Shapely |
+| 前端框架 | Vue 3 / Element Plus |
+| 构建工具 | Vite |
+| HTTP 客户端 | Axios |
 
-#### 分析接口
-- POST /api/analyze - 使用硅基流动API分析场景
-  - 提供场景理解和安全建议
+## 配置说明
 
-### 前端使用指南
+所有敏感配置通过 `.env` 文件管理：
 
-#### 1. 基本操作
-1. 打开浏览器访问 http://localhost:8080
-2. 等待模型加载完成（右下角状态栏显示）
+| 变量 | 说明 | 必需 |
+|------|------|:---:|
+| `SILICONFLOW_API_KEY` | 硅基流动 API 密钥 | ✅ |
+| `SILICONFLOW_API_URL` | API 端点地址 | - |
+| `SILICONFLOW_VISION_MODEL` | 视觉模型名称 | - |
+| `SECRET_KEY` | Flask 密钥 | - |
+| `DEBUG` | 调试模式 | - |
 
-#### 2. 图片导入
-- 单个图片：点击左侧文件树中的图片
-- 批量导入：点击"选择文件夹"按钮
-
-#### 3. 检测操作
-1. 选择图片后点击"开始检测"
-2. 等待检测完成，右侧将显示检测结果
-3. 可使用上下导航按钮查看其他图片
-
-#### 4. 结果处理
-- 导出结果：点击"导出结果"按钮
-- 清除结果：点击"清除结果"按钮
+> 注册 SiliconFlow：https://siliconflow.cn
 
 ## 开发指南
 
-### 项目结构
-
-#### 后端服务 (backend/)
-```
-backend/
-├── app/
-│   ├── main.py          # 主应用文件
-│   ├── services/
-│   │   ├── detection.py   # 检测服务
-│   │   └── rules_checker.py # 规则检查器
-│   └── models/          # 模型文件
-├── config/
-│   └── settings.py     # 配置文件
-└── requirements.txt   # 依赖需求
-```
-
-#### 前端应用 (frontend/)
-```
-frontend/
-├── src/
-│   ├── components/     # 组件目录
-│   ├── views/          # 页面视图
-│   ├── api/            # API调用
-│   └── utils/          # 工具函数
-├── public/           # 静态资源
-└── package.json      # 项目配置
-```
-
-### 主要技术栈
-
-#### 后端
-- Python 3.8+
-- Flask Web框架
-- YOLO目标检测模型
-- OpenCV图像处理
-
-#### 前端
-- Vue 3
-- Element Plus UI框架
-- Axios HTTP客户端
-- Vite构建工具
-
-### 开发规范
-
-#### 代码风格
-- 后端遵循 PEP 8 Python代码规范
-- 前端遵循 Vue 3官方风格指南
-- 使用ESLint和Prettier进行代码格式化
-
-#### Git提交规范
-- feat: 新功能
-- fix: 修复bug
-- docs: 文档更新
-- style: 代码格式
-- refactor: 代码重构
-- test: 测试相关
-- chore: 其他更改
+### Git 提交规范
+- `feat:` 新功能
+- `fix:` 修复 bug
+- `docs:` 文档更新
+- `refactor:` 代码重构
+- `style:` 代码格式
+- `chore:` 构建/工具
 
 ### 扩展开发
 
-#### 添加新的检测类别
-1. 在`backend/app/main.py`中的`CLASS_MAPPING`添加新类别
-2. 更新模型配置文件
-3. 重新训练模型
+**添加新检测类别**
+1. 在 `backend/app/services/detection.py` 的 `CATEGORY_MAPPING` 添加新类别
+2. 在 `backend/app/services/rules_checker.py` 添加对应规则
 
-#### 添加新的规则检查
-1. 在`backend/app/services/rules_checker.py`中添加新规则
-2. 实现规则检查逻辑
-3. 更新前端规则展示组件
-
-规则检查系统设计原则：
-- 规则分类管理：按功能域划分规则类别
-- 优先级分级：严重、重要、一般三级
-- 智能容错：考虑检测结果可能的误差
-- 清晰反馈：提供具体的违规原因和改进建议
-- 可扩展性：支持灵活添加新规则
-
-最新规则更新（2025-04）：
-- 优化了钢筋加工场临近道路检查
-- 新增塔吊覆盖主楼检查
-- 新增洗车池和三级沉淀池设置检查
-- 新增材料堆场临近道路检查
-- 新增危险品堆场隔离检查
-
-### 代码规范
-- 遵循PEP 8 Python代码规范
-- 使用ESLint进行JavaScript代码检查
-- 编写清晰的代码注释
-- 保持代码简洁可维护
-
-### Git工作流
-1. 创建功能分支
-2. 提交代码更改
-3. 提交Pull Request
-4. 代码审查合并
+**添加新施工规范**
+在 `RulesChecker._initialize_rules()` 中追加规则 dict，实现对应 `_check_*` 方法。
 
 ## 注意事项
-1. 定期备份重要数据
-2. 及时更新依赖包
-3. 遵循安全开发规范
-4. 保护敏感配置信息
 
-## 贡献指南
-欢迎提交Issue和Pull Request来帮助改进项目。
+1. `.env` 文件包含 API 密钥，已加入 `.gitignore`，切勿提交到仓库
+2. 模型文件 (`*.pt`) 不入 Git，需单独放置到 `backend/models/`
+3. 大型 PNG 文件 (100MB+) 在 .docx 中处理较慢，建议预压缩
 
 ## 许可证
-本项目采用MIT许可证。
+
+MIT License

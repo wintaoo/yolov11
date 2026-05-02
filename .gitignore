@@ -41,6 +41,7 @@ frontend/dist/
 # 缓存和上传
 backend/cache/
 backend/uploads/
+backend/docx_images/
 
 # 训练结果
 runs/

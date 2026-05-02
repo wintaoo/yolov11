@@ -34,7 +34,3 @@
 				√其他设施（仓库/危险品仓库、标养室/养护室/试验室、洗车台/洗车池/洗车槽）	
 
 
-
-硅基流动apikey：sk-ryoqxzjolunrurqpdxghyqdkfdlmstexhhotlkofwzhbxjjs
-硅基流动url：https://api.siliconflow.cn/v1/chat/completions
-使用model：zai-org/GLM-4.6V
