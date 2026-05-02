@@ -80,8 +80,12 @@ class DetectionService:
             }
             
             # 加载中文字体
-            #self.font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'fonts', 'SimHei.ttf')
-            self.font_path = '/home/bailey/Code/yyh/yolov11/backend/fonts/simsun(1).ttc'
+            self.font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'backend', 'fonts', 'simsun(1).ttc')
+            # 如果 simsun 不存在则尝试 SimHei
+            if not os.path.exists(self.font_path) or os.path.getsize(self.font_path) == 0:
+                alt_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'backend', 'fonts', 'SimHei.ttf')
+                if os.path.exists(alt_path) and os.path.getsize(alt_path) > 0:
+                    self.font_path = alt_path
             if not os.path.exists(self.font_path):
                 self.logger.warning(f"中文字体文件不存在: {self.font_path}")
             
@@ -117,11 +121,32 @@ class DetectionService:
             model_name: 可选的模型名称，如果不指定则使用默认模型
         """
         try:
-            # 直接使用best.pt作为默认模型
-            model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'models', 'best.pt')
+            # 尝试多个可能的模型路径
+            possible_paths = [
+                # backend/models/best.pt
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'models', 'best.pt'),
+                # 项目根目录/models/best.pt
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'models', 'best.pt'),
+                # runs/detect 下最新的权重文件
+            ]
             
-            if not os.path.exists(model_path):
-                self.logger.error(f"模型文件不存在: {model_path}")
+            # 扫描 runs/detect 下的权重文件
+            runs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'runs', 'detect')
+            if os.path.exists(runs_dir):
+                for exp_dir in sorted(os.listdir(runs_dir), reverse=True):
+                    weights_path = os.path.join(runs_dir, exp_dir, 'weights', 'best.pt')
+                    if os.path.exists(weights_path):
+                        possible_paths.append(weights_path)
+                        break
+            
+            model_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    model_path = path
+                    break
+            
+            if model_path is None:
+                self.logger.error("未找到模型文件，请将 best.pt 放到 models/ 目录下")
                 return False
                 
             self.logger.info(f"正在加载模型: {model_path}")
@@ -136,6 +161,14 @@ class DetectionService:
         except Exception as e:
             self.logger.error(f"加载模型失败: {str(e)}")
             return False
+    
+    def get_model_status(self):
+        """获取模型状态"""
+        return {
+            'loaded': self.model is not None,
+            'model_path': self.current_model_path,
+            'available_models': list(self.available_models.keys())
+        }
     
     def draw_chinese_text(self, img, text, pos, color, box_width):
         """在图像上绘制中文文本
@@ -217,7 +250,7 @@ class DetectionService:
         # 如果模型未加载，则加载默认模型
         if self.model is None:
             if not self.load_model():
-                raise Exception("无法加载模型")
+                raise Exception("模型文件不存在，请将 best.pt 放到 models/ 目录下")
         
         # 检查图像文件是否存在
         if not os.path.exists(image_path):

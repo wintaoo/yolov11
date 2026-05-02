@@ -13,7 +13,13 @@ export default defineConfig({
     },
     server: {
         port: 8080,
-        host: true
+        host: true,
+        proxy: {
+            '/api': {
+                target: 'http://localhost:5000',
+                changeOrigin: true
+            }
+        }
     },
     optimizeDeps: {
         include: ['element-plus', '@element-plus/icons-vue', 'axios', 'lodash-es']

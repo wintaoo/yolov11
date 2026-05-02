@@ -1070,9 +1070,10 @@ const handleDetect = async () => {
     } else {
       ElMessage.error(response.data.error || '检测失败')
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('检测失败:', error)
-    ElMessage.error('检测失败，请重试')
+    const errorMsg = error.response?.data?.error || error.response?.data?.data?.message || error.message || '检测失败，请重试'
+    ElMessage.error(errorMsg)
   } finally {
     detecting.value = false
   }

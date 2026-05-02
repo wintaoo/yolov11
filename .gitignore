@@ -9,6 +9,7 @@ __pycache__/
 
 # 日志文件
 *.log
+backend/logs/
 
 # 模型文件
 *.pt
@@ -32,3 +33,21 @@ venv/
 
 # 大文件
 *.png
+*.jpg
+*.jpeg
+*.bmp
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/lib/
+
+# 缓存
+backend/cache/
+backend/uploads/
+
+# 训练结果
+runs/
+
+# Python包
+*.egg-info/

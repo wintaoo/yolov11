@@ -229,11 +229,7 @@ def process_image_with_siliconflow(image_file):
 def index():
     """首页路由"""
     logger.info("接收到根路由请求")
-    logger.debug(f"模板路径: {os.path.abspath('templates/index.html')}")
-    return render_template('index.html', 
-                          model_loaded=model_loaded,
-                          message="模型正在加载中，请稍候..." if not model_loaded else "",
-                          error=model_load_error)
+    return "YOLOv11 Detection API Server is running. Visit frontend at http://localhost:8080"
 
 @main_bp.route('/api/detection/model/status', methods=['GET'])
 def get_model_status():

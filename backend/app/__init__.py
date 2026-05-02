@@ -54,14 +54,20 @@ def create_app():
         # 初始化API路由
         # init_api(app)
         
-        # 添加根路由，服务前端页面
+        # 添加根路由，服务前端页面（优先使用前端dist目录，不存在时返回提示）
+        frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'frontend', 'dist')
+        
         @app.route('/')
         def serve_frontend():
-            return send_from_directory(app.static_folder, 'index.html')
+            if os.path.exists(os.path.join(frontend_dist, 'index.html')):
+                return send_from_directory(frontend_dist, 'index.html')
+            return "YOLOv11 Detection API Server is running. Frontend dev server should be started on port 8080."
         
         @app.route('/<path:path>')
         def serve_static(path):
-            return send_from_directory(app.static_folder, path)
+            if os.path.exists(os.path.join(frontend_dist, path)):
+                return send_from_directory(frontend_dist, path)
+            return "Frontend not built yet. Run 'cd frontend && npm run dev' for development.", 404
         
         # 在应用上下文中初始化检测服务
         with app.app_context():

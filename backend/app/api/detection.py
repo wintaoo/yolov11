@@ -12,23 +12,25 @@ def detect():
         if 'file' not in request.files:
             return jsonify({
                 'success': False,
+                'error': '未找到上传的文件',
                 'data': {
                     'detections': [],
                     'class_counts': {},
                     'message': '未找到上传的文件'
                 }
-            }), 400
+            })
         
         file = request.files['file']
         if not file:
             return jsonify({
                 'success': False,
+                'error': '文件为空',
                 'data': {
                     'detections': [],
                     'class_counts': {},
                     'message': '文件为空'
                 }
-            }), 400
+            })
         
         # 获取可选的模型路径参数
         model_path = request.form.get('model_path')
@@ -57,12 +59,13 @@ def detect():
         current_app.logger.error(f"检测过程出错: {str(e)}", exc_info=True)
         return jsonify({
             'success': False,
+            'error': str(e),
             'data': {
                 'detections': [],
                 'class_counts': {},
                 'message': f"检测失败: {str(e)}"
             }
-        }), 500
+        })
 
 @detection_bp.route('/analyze', methods=['POST'])
 # @require_auth  # 暂时注释掉鉴权
@@ -81,7 +84,7 @@ def analyze():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-@detection_bp.route('/detect', methods=['POST'])
+@detection_bp.route('/switch-model', methods=['POST'])
 # @require_auth  # 暂时注释掉鉴权
 def switch_model():
     """切换模型"""
