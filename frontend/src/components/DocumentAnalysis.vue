@@ -35,9 +35,11 @@
             <div class="history-info">
               <div class="history-name" :title="t.original_filename">{{ t.original_filename }}</div>
               <div class="history-meta">
-                <span>{{ t.total_images }} 张图片</span>
-                <span v-if="t.result_count > 0">已分析 {{ t.result_count }} 张</span>
-                <span v-if="t.has_summary" class="summary-badge">已完成汇总</span>
+                <el-tag size="small" type="info">{{ t.task_id }}</el-tag>
+                <span>{{ t.total_images }} 张</span>
+                <span v-if="t.result_count > 0" class="done-badge">已分析 {{ t.result_count }}</span>
+                <span v-if="t.has_report" class="report-badge">报告</span>
+                <span v-if="t.has_summary" class="summary-badge">已汇总</span>
               </div>
             </div>
             <div class="history-actions">
@@ -265,10 +267,19 @@ const handleUpload = async (event: Event) => {
       for (const img of (res.data.images || [])) {
         cats[img.index] = img.guessed_category || '其他'
       }
+      const fres = res.data.results || {}
+      Object.entries(fres).forEach(([k, v]: [string, any]) => {
+        resultMap.value[parseInt(k)] = v
+        cats[parseInt(k)] = v.image_type || cats[parseInt(k)] || '其他'
+      })
       imageCategories.value = cats
-      categoryStats.value = res.data.category_guess || {}
-      batchSummary.value = ''
-      ElMessage.success(`文档解析完成，共提取 ${res.data.total_images} 张图片`)
+      updateCategoryStats()
+      batchSummary.value = res.data.batch_summary || ''
+      if (res.data.reused) {
+        ElMessage.success(`该文档已有历史任务，已自动恢复，共 ${res.data.total_images} 张图片`)
+      } else {
+        ElMessage.success(`文档解析完成，共提取 ${res.data.total_images} 张图片`)
+      }
     } else {
       ElMessage.error(res.data.error || '解析失败')
     }
@@ -458,8 +469,10 @@ onUnmounted(() => {
 .history-card:hover { border-color: #c7d2fe; }
 .history-info { flex: 1; min-width: 0; }
 .history-name { font-size: 14px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-meta { display: flex; gap: 12px; margin-top: 4px; font-size: 12px; color: #94a3b8; }
+.history-meta { display: flex; gap: 10px; align-items: center; margin-top: 5px; font-size: 12px; color: #94a3b8; }
 .history-meta .summary-badge { color: #6366f1; font-weight: 600; }
+.history-meta .report-badge { color: #059669; font-weight: 600; font-size: 11px; padding: 1px 6px; background: #d1fae5; border-radius: 4px; }
+.history-meta .done-badge { color: #6366f1; font-weight: 600; }
 .history-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 .status-bar {

@@ -5,7 +5,6 @@ from backend.app.services import task_service
 from backend.app.config import Config
 import os
 import re
-import uuid
 import threading
 import logging
 import time
@@ -37,7 +36,41 @@ def upload_docx():
             return jsonify({'success': False, 'error': '仅支持 .docx 格式的Word文档'})
 
         safe_name = re.sub(r'[\\/:*?"<>|]', '_', file.filename.rsplit('.', 1)[0])[:20]
-        task_id = f"{safe_name}_{str(uuid.uuid4())[:6]}"
+        task_id = f"{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        existing_tasks = task_service.list_tasks(Config.TASKS_DIR)
+        same_doc = next((t for t in existing_tasks if t['original_filename'] == file.filename), None)
+        if same_doc:
+            logger.info(f"检测到重复文档 [{file.filename}], 复用已存在的任务: {same_doc['task_id']}")
+            task_id = same_doc['task_id']
+            task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+            if task_data:
+                task_data['task_id'] = task_id
+                analysis_tasks[task_id] = task_data
+                results = task_data.get('results', {})
+                cat_stats = {}
+                for img in task_data.get('images', []):
+                    idx = img['index']
+                    if str(idx) in results:
+                        cat_stats[results[str(idx)].get('image_type', '其他')] = cat_stats.get(results[str(idx)].get('image_type', '其他'), 0) + 1
+                    else:
+                        cat_stats[img.get('guessed_category', '其他')] = cat_stats.get(img.get('guessed_category', '其他'), 0) + 1
+                return jsonify({
+                    'success': True,
+                    'task_id': task_id,
+                    'reused': True,
+                    'total_images': task_data['total_images'],
+                    'images': [{
+                        'index': img['index'],
+                        'filename': img['filename'],
+                        'context': img.get('context', ''),
+                        'guessed_category': img.get('guessed_category', '其他'),
+                    } for img in task_data.get('images', [])],
+                    'results': results,
+                    'batch_summary': task_data.get('batch_summary', ''),
+                    'category_guess': cat_stats,
+                })
+
         td = _task_dir(task_id)
         img_dir = _images_dir(task_id)
         os.makedirs(td, exist_ok=True)
