@@ -20,6 +20,38 @@
           <input type="file" ref="docxInput" accept=".docx" @change="handleUpload" hidden />
         </label>
       </div>
+
+      <div class="history-panel" v-if="taskList.length > 0">
+        <div class="history-header">
+          <el-icon :size="18"><Clock /></el-icon>
+          <span>历史分析任务 ({{ taskList.length }})</span>
+        </div>
+        <div class="history-list">
+          <div
+            v-for="t in taskList"
+            :key="t.task_id"
+            class="history-card"
+          >
+            <div class="history-info">
+              <div class="history-name" :title="t.original_filename">{{ t.original_filename }}</div>
+              <div class="history-meta">
+                <span>{{ t.total_images }} 张图片</span>
+                <span v-if="t.result_count > 0">已分析 {{ t.result_count }} 张</span>
+                <span v-if="t.has_summary" class="summary-badge">已完成汇总</span>
+              </div>
+            </div>
+            <div class="history-actions">
+              <el-button size="small" type="primary" plain @click="loadTask(t.task_id)">
+                <el-icon><FolderOpened /></el-icon>
+                打开
+              </el-button>
+              <el-button size="small" type="danger" plain @click="removeTask(t.task_id)">
+                <el-icon><Delete /></el-icon>
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="analysis-container" v-else>
@@ -169,8 +201,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
-import { Upload, Picture, VideoPlay, Check, Trophy } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { Upload, Picture, VideoPlay, Check, Trophy, Clock, FolderOpened, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 
@@ -189,6 +221,7 @@ const selectedImg = ref<number | null>(null)
 const selectedImage = ref<any>(null)
 const analyzingSingle = ref(false)
 const pollTimer = ref<number | null>(null)
+const taskList = ref<any[]>([])
 
 const selectedResult = computed(() => {
   if (!selectedImg.value) return null
@@ -338,6 +371,58 @@ const resetTask = () => {
   selectedImage.value = null
 }
 
+const fetchTasks = async () => {
+  try {
+    const res = await axios.get('/api/docx/tasks')
+    if (res.data.success) {
+      taskList.value = res.data.tasks || []
+    }
+  } catch {}
+}
+
+const loadTask = async (tid: string) => {
+  try {
+    const res = await axios.post(`/api/docx/task/${tid}/load`)
+    if (res.data.success) {
+      taskId.value = res.data.task_id
+      totalImages.value = res.data.total_images
+      images.value = res.data.images
+      resultMap.value = {}
+      const cats: Record<number, string> = {}
+      for (const img of (res.data.images || [])) {
+        cats[img.index] = img.guessed_category || '其他'
+      }
+      const fres = res.data.results || {}
+      Object.entries(fres).forEach(([k, v]: [string, any]) => {
+        resultMap.value[parseInt(k)] = v
+        cats[parseInt(k)] = v.image_type || cats[parseInt(k)] || '其他'
+      })
+      imageCategories.value = cats
+      updateCategoryStats()
+      batchSummary.value = res.data.batch_summary || ''
+      ElMessage.success(`已加载历史任务，共 ${res.data.total_images} 张图片`)
+    } else {
+      ElMessage.error(res.data.error || '加载失败')
+    }
+  } catch (err: any) {
+    ElMessage.error(err.message || '加载失败')
+  }
+}
+
+const removeTask = async (tid: string) => {
+  try {
+    await axios.delete(`/api/docx/task/${tid}`)
+    taskList.value = taskList.value.filter(t => t.task_id !== tid)
+    ElMessage.success('任务已删除')
+  } catch {
+    ElMessage.error('删除失败')
+  }
+}
+
+onMounted(() => {
+  fetchTasks()
+})
+
 onUnmounted(() => {
   if (pollTimer.value) clearInterval(pollTimer.value)
 })
@@ -360,6 +445,22 @@ onUnmounted(() => {
   box-shadow: 0 4px 14px rgba(99,102,241,.35);
 }
 .upload-btn:hover { background: #4f46e5; transform: translateY(-1px); }
+
+.history-panel { max-width: 560px; width: 100%; margin: 0 auto; }
+.history-header { display: flex; align-items: center; gap: 8px; color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.history-list { display: flex; flex-direction: column; gap: 8px; }
+.history-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: white; border-radius: 10px; padding: 14px 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05); border: 1px solid #f1f5f9;
+  transition: all .15s;
+}
+.history-card:hover { border-color: #c7d2fe; }
+.history-info { flex: 1; min-width: 0; }
+.history-name { font-size: 14px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-meta { display: flex; gap: 12px; margin-top: 4px; font-size: 12px; color: #94a3b8; }
+.history-meta .summary-badge { color: #6366f1; font-weight: 600; }
+.history-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 .status-bar {
   display: flex; align-items: center; justify-content: space-between;

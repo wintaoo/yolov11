@@ -42,6 +42,7 @@ frontend/dist/
 backend/cache/
 backend/uploads/
 backend/docx_images/
+backend/tasks/
 
 # 训练结果
 runs/

@@ -1,15 +1,25 @@
 from flask import Blueprint, request, jsonify, current_app, send_file
 from backend.app.services.docx_service import extract_images_from_docx, guess_category_from_context
 from backend.app.services.ai_analysis_service import analyze_image_with_ai
+from backend.app.services import task_service
 from backend.app.config import Config
 import os
 import uuid
 import threading
 import logging
+from datetime import datetime
 
 docx_bp = Blueprint('docx', __name__)
 analysis_tasks = {}
 logger = logging.getLogger(__name__)
+
+
+def _task_dir(task_id):
+    return task_service.task_dir(Config.TASKS_DIR, task_id)
+
+
+def _images_dir(task_id):
+    return task_service.images_dir(Config.TASKS_DIR, task_id)
 
 
 @docx_bp.route('/upload', methods=['POST'])
@@ -23,14 +33,14 @@ def upload_docx():
             return jsonify({'success': False, 'error': '仅支持 .docx 格式的Word文档'})
 
         task_id = str(uuid.uuid4())[:8]
-        upload_dir = os.path.join(Config.UPLOAD_FOLDER, task_id)
-        os.makedirs(upload_dir, exist_ok=True)
+        td = _task_dir(task_id)
+        img_dir = _images_dir(task_id)
+        os.makedirs(td, exist_ok=True)
 
-        docx_path = os.path.join(upload_dir, 'document.docx')
+        docx_path = os.path.join(td, 'original.docx')
         file.save(docx_path)
 
-        img_output_dir = os.path.join(Config.DOCX_IMAGE_DIR, task_id)
-        extract_result = extract_images_from_docx(docx_path, img_output_dir)
+        extract_result = extract_images_from_docx(docx_path, img_dir)
 
         for img in extract_result['images']:
             img['guessed_category'] = guess_category_from_context(img.get('context', ''))
@@ -38,12 +48,16 @@ def upload_docx():
         analysis_tasks[task_id] = {
             'status': 'extracted',
             'task_id': task_id,
+            'original_filename': file.filename,
             'total_images': extract_result['total'],
             'images': extract_result['images'],
-            'output_dir': img_output_dir,
+            'output_dir': img_dir,
             'results': {},
             'summary': '',
+            'created_at': datetime.now().isoformat(),
         }
+
+        task_service.save_task(Config.TASKS_DIR, task_id, analysis_tasks[task_id])
 
         category_guess_stats = {}
         for img in extract_result['images']:
@@ -82,6 +96,8 @@ def analyze_batch(task_id):
     task['batch_total'] = task['total_images']
     task['batch_results'] = {}
     task['batch_summary'] = ''
+    task['status'] = 'analyzing'
+    task_service.save_task(Config.TASKS_DIR, task_id, task)
 
     def run_batch():
         try:
@@ -94,19 +110,26 @@ def analyze_batch(task_id):
 
                 ai_result = analyze_image_with_ai(img['filepath'], img.get('context', ''))
                 task['batch_results'][idx] = ai_result
+                task_service.save_results(Config.TASKS_DIR, task_id, {idx: ai_result})
                 logger.info(f"  完成: 类型={ai_result.get('image_type', '?')}")
 
             task['batch_status'] = 'summarizing'
-            task['batch_summary'] = generate_summary(task['batch_results'])
+            summary = generate_summary(task['batch_results'])
+            task['batch_summary'] = summary
+            task_service.save_summary(Config.TASKS_DIR, task_id, summary)
+            task_service.save_results(Config.TASKS_DIR, task_id, task['batch_results'])
             task['batch_progress'] = total
             task['status'] = 'completed'
             task['batch_running'] = False
+            task_service.save_task(Config.TASKS_DIR, task_id, task)
             logger.info(f"批量分析完成 [{task_id}]")
 
         except Exception as e:
             logger.error(f"批量分析失败 [{task_id}]: {str(e)}", exc_info=True)
             task['batch_running'] = False
             task['batch_error'] = str(e)
+            task['status'] = 'error'
+            task_service.save_task(Config.TASKS_DIR, task_id, task)
 
     t = threading.Thread(target=run_batch, daemon=True)
     t.start()
@@ -128,6 +151,7 @@ def analyze_single(task_id, index):
         logger.info(f"单张分析 [{task_id}] #{index}: {img['filename']}")
         ai_result = analyze_image_with_ai(img['filepath'], img.get('context', ''))
         task['results'][str(index)] = ai_result
+        task_service.save_results(Config.TASKS_DIR, task_id, {str(index): ai_result})
 
         return jsonify({
             'success': True,
@@ -162,6 +186,8 @@ def get_status(task_id):
 @docx_bp.route('/image/<task_id>/<filename>', methods=['GET'])
 def get_image(task_id, filename):
     possible_dirs = [
+        _images_dir(task_id),
+        _task_dir(task_id),
         os.path.join(Config.DOCX_IMAGE_DIR, task_id),
         os.path.join(Config.UPLOAD_FOLDER, task_id),
     ]
@@ -173,6 +199,53 @@ def get_image(task_id, filename):
                     '.bmp': 'image/bmp', '.gif': 'image/gif', '.webp': 'image/webp'}
             return send_file(p, mimetype=mime.get(ext, 'image/png'))
     return jsonify({'success': False, 'error': '文件不存在'}), 404
+
+
+@docx_bp.route('/tasks', methods=['GET'])
+def list_tasks():
+    try:
+        tasks = task_service.list_tasks(Config.TASKS_DIR)
+        return jsonify({'success': True, 'tasks': tasks})
+    except Exception as e:
+        logger.error(f"列出任务失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@docx_bp.route('/task/<task_id>/load', methods=['POST'])
+def load_task(task_id):
+    try:
+        task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+        if not task_data:
+            return jsonify({'success': False, 'error': '任务不存在'})
+        analysis_tasks[task_id] = task_data
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'total_images': task_data['total_images'],
+            'images': [{
+                'index': img['index'],
+                'filename': img['filename'],
+                'context': img.get('context', ''),
+                'guessed_category': img.get('guessed_category', '其他'),
+            } for img in task_data.get('images', [])],
+            'results': task_data.get('results', {}),
+            'batch_summary': task_data.get('batch_summary', ''),
+            'status': task_data.get('status', 'extracted'),
+        })
+    except Exception as e:
+        logger.error(f"加载任务失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@docx_bp.route('/task/<task_id>', methods=['DELETE'])
+def delete_task(task_id):
+    try:
+        analysis_tasks.pop(task_id, None)
+        task_service.delete_task(Config.TASKS_DIR, task_id)
+        return jsonify({'success': True, 'message': '任务已删除'})
+    except Exception as e:
+        logger.error(f"删除任务失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 
 def generate_summary(all_results):
