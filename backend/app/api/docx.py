@@ -4,6 +4,7 @@ from backend.app.services.ai_analysis_service import analyze_image_with_ai
 from backend.app.services import task_service
 from backend.app.config import Config
 import os
+import re
 import uuid
 import threading
 import logging
@@ -35,7 +36,8 @@ def upload_docx():
         if not file.filename.lower().endswith('.docx'):
             return jsonify({'success': False, 'error': '仅支持 .docx 格式的Word文档'})
 
-        task_id = str(uuid.uuid4())[:8]
+        safe_name = re.sub(r'[\\/:*?"<>|]', '_', file.filename.rsplit('.', 1)[0])[:20]
+        task_id = f"{safe_name}_{str(uuid.uuid4())[:6]}"
         td = _task_dir(task_id)
         img_dir = _images_dir(task_id)
         os.makedirs(td, exist_ok=True)
@@ -131,6 +133,7 @@ def analyze_batch(task_id):
             task['batch_summary'] = summary
             task_service.save_summary(Config.TASKS_DIR, task_id, summary)
             task_service.save_results(Config.TASKS_DIR, task_id, task['batch_results'])
+            task_service.generate_analysis_report(Config.TASKS_DIR, task_id)
             task['batch_progress'] = total
             task['status'] = 'completed'
             task['batch_running'] = False
@@ -165,6 +168,7 @@ def analyze_single(task_id, index):
         ai_result = analyze_image_with_ai(img['filepath'], img.get('context', ''))
         task['results'][str(index)] = ai_result
         task_service.save_results(Config.TASKS_DIR, task_id, {str(index): ai_result})
+        task_service.generate_analysis_report(Config.TASKS_DIR, task_id)
 
         return jsonify({
             'success': True,
@@ -201,8 +205,6 @@ def get_image(task_id, filename):
     possible_dirs = [
         _images_dir(task_id),
         _task_dir(task_id),
-        os.path.join(Config.DOCX_IMAGE_DIR, task_id),
-        os.path.join(Config.UPLOAD_FOLDER, task_id),
     ]
     for d in possible_dirs:
         p = os.path.join(d, filename)
@@ -244,6 +246,7 @@ def load_task(task_id):
             'results': task_data.get('results', {}),
             'batch_summary': task_data.get('batch_summary', ''),
             'status': task_data.get('status', 'extracted'),
+            'has_report': os.path.exists(os.path.join(_task_dir(task_id), 'analysis_report.md')),
         })
     except Exception as e:
         logger.error(f"加载任务失败: {e}")

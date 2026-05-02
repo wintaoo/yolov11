@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 TASK_FILENAME = 'task.json'
 RESULTS_FILENAME = 'results.json'
 SUMMARY_FILENAME = 'summary.md'
+REPORT_FILENAME = 'analysis_report.md'
 
 
 def task_dir(tasks_root, task_id):
@@ -94,6 +95,66 @@ def save_summary(tasks_root, task_id, summary):
         f.write(summary)
 
 
+def generate_analysis_report(tasks_root, task_id):
+    """从 results.json 生成人类可读的 analysis_report.md"""
+    d = task_dir(tasks_root, task_id)
+    results = load_results(tasks_root, task_id)
+    if not results:
+        return
+
+    meta_file = os.path.join(d, TASK_FILENAME)
+    doc_name = ''
+    if os.path.exists(meta_file):
+        with open(meta_file, 'r', encoding='utf-8') as f:
+            doc_name = json.load(f).get('original_filename', '')
+
+    lines = []
+    lines.append(f"# 分析报告: {doc_name}\n")
+    lines.append(f"> 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    lines.append("")
+
+    for idx in sorted(results.keys(), key=lambda x: int(x)):
+        r = results[idx]
+        lines.append(f"## 图片 #{idx}\n")
+        lines.append(f"**图纸类型**: {r.get('image_type', '未分类')}\n")
+
+        summary = r.get('summary', '')
+        if summary:
+            lines.append(f"**AI 摘要**:\n\n> {summary}\n")
+
+        evaluation = r.get('evaluation', '')
+        if evaluation:
+            lines.append(f"**AI 评估**: {evaluation}\n")
+
+        schedule = r.get('construction_schedule', {})
+        if schedule and schedule.get('has_schedule'):
+            lines.append(f"**施工计划**: {schedule.get('start_date', '')} ~ {schedule.get('end_date', '')}\n")
+            for t in schedule.get('tasks', []):
+                lines.append(f"- {t.get('name', '')}: {t.get('start', '')} ~ {t.get('end', '')} ({t.get('duration', '')})")
+            lines.append('')
+
+        dims = r.get('dimensions_specs', {})
+        if dims and dims.get('found'):
+            lines.append("**尺寸规格**:")
+            for s in dims.get('items', []):
+                parts = [s.get('name', '')]
+                if s.get('dimension'):
+                    parts.append(f"尺寸: {s['dimension']}")
+                if s.get('model'):
+                    parts.append(f"型号: {s['model']}")
+                if s.get('quantity'):
+                    parts.append(f"数量: {s['quantity']}")
+                lines.append(f"- {' | '.join(parts)}")
+            lines.append('')
+
+        lines.append("---\n")
+
+    filepath = os.path.join(d, REPORT_FILENAME)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+    logger.info(f"分析报告已生成: {task_id} ({len(results)}张)")
+
+
 def list_tasks(tasks_root):
     if not os.path.exists(tasks_root):
         return []
@@ -117,6 +178,7 @@ def list_tasks(tasks_root):
                 'status': meta.get('status', 'extracted'),
                 'result_count': result_count,
                 'has_summary': has_summary,
+                'has_report': os.path.exists(os.path.join(d, REPORT_FILENAME)),
                 'created_at': meta.get('created_at', ''),
                 'updated_at': meta.get('updated_at', ''),
             })

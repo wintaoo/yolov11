@@ -22,7 +22,6 @@ class Config:
     MODEL_PATH = os.path.join(MODEL_DIR, 'best.pt')
 
     UPLOAD_FOLDER = UPLOAD_FOLDER
-    DOCX_IMAGE_DIR = os.path.join(BASE_DIR, 'docx_images')
     TASKS_DIR = os.path.join(BASE_DIR, 'tasks')
     LOG_FILE = os.path.join(BASE_DIR, 'logs', 'app.log')
 
@@ -40,7 +39,6 @@ class Config:
     @staticmethod
     def init_app(app):
         os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-        os.makedirs(Config.DOCX_IMAGE_DIR, exist_ok=True)
         os.makedirs(Config.TASKS_DIR, exist_ok=True)
         os.makedirs(os.path.dirname(Config.LOG_FILE), exist_ok=True)
 
