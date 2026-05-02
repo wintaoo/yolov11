@@ -16,16 +16,30 @@
       </div>
     </header>
     <main class="app-main">
-      <DetectionPanel />
+      <div class="main-tabs">
+        <button :class="{ active: activeTab === 'detect' }" @click="activeTab = 'detect'">
+          <el-icon><Picture /></el-icon>
+          图片检测
+        </button>
+        <button :class="{ active: activeTab === 'docx' }" @click="activeTab = 'docx'">
+          <el-icon><Document /></el-icon>
+          文档分析
+        </button>
+      </div>
+      <DetectionPanel v-if="activeTab === 'detect'" />
+      <DocumentAnalysis v-if="activeTab === 'docx'" />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { Picture, Document } from '@element-plus/icons-vue'
 import DetectionPanel from './components/DetectionPanel.vue'
+import DocumentAnalysis from './components/DocumentAnalysis.vue'
 
 const modelReady = ref(false)
+const activeTab = ref('detect')
 
 onMounted(async () => {
   try {
@@ -140,4 +154,17 @@ body {
   margin: 0 auto;
   width: 100%;
 }
+
+.main-tabs {
+  display: flex; gap: 4px; margin-bottom: 20px;
+  background: #e2e8f0; border-radius: 10px; padding: 4px;
+  width: fit-content;
+}
+.main-tabs button {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 20px; border: none; background: transparent; border-radius: 8px;
+  font-size: 14px; font-weight: 500; color: #64748b; cursor: pointer;
+  transition: all .15s;
+}
+.main-tabs button.active { background: white; color: #4f46e5; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 </style>

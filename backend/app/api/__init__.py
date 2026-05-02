@@ -1,13 +1,13 @@
 from flask import Blueprint, jsonify, request
 from .detection import detection_bp
+from .docx import docx_bp
 from ..services.detection import detection_service
 
 def init_api(app):
-    # 创建主API蓝图
     api_bp = Blueprint('api', __name__)
-    
-    # 注册子蓝图
+
     api_bp.register_blueprint(detection_bp, url_prefix='/detection')
+    api_bp.register_blueprint(docx_bp, url_prefix='/docx')
     
     # 添加当前模型信息路由
     @api_bp.route('/models/current', methods=['GET'])

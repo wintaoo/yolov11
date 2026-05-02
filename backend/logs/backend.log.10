@@ -1,121 +1,55 @@
-2025-04-14 05:58:45,686 - backend.app - ERROR - 检测过程出错: 'DetectionService' object has no attribute 'model_loaded'
-Traceback (most recent call last):
-  File "/mnt/data/Code/yyh/yolov11/backend/app/api/detection.py", line 47, in detect
-    result = detection_service.process_image(temp_path, model_path)
-  File "/mnt/data/Code/yyh/yolov11/backend/app/services/detection.py", line 153, in process_image
-    elif not self.model_loaded:
-AttributeError: 'DetectionService' object has no attribute 'model_loaded'
-2025-04-14 06:04:32,895 - backend.app - ERROR - 检测过程出错: 'DetectionService' object has no attribute 'model_loaded'
-Traceback (most recent call last):
-  File "/mnt/data/Code/yyh/yolov11/backend/app/api/detection.py", line 47, in detect
-    result = detection_service.process_image(temp_path, model_path)
-  File "/mnt/data/Code/yyh/yolov11/backend/app/services/detection.py", line 153, in process_image
-    elif self.model is None:
-AttributeError: 'DetectionService' object has no attribute 'model_loaded'
-2025-04-14 06:04:54,695 - backend.app - INFO - 应用启动
-2025-04-14 06:04:54,696 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 06:04:54,696 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 06:04:54,734 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 06:04:54,734 - backend.app - INFO - 默认模型加载成功
-2025-04-14 06:05:38,262 - backend.app - ERROR - 检测过程出错: string indices must be integers
-Traceback (most recent call last):
-  File "/mnt/data/Code/yyh/yolov11/backend/app/api/detection.py", line 47, in detect
-    result = detection_service.process_image(temp_path, model_path)
-  File "/mnt/data/Code/yyh/yolov11/backend/app/services/detection.py", line 186, in process_image
-    category_name = category_info['category']
-TypeError: string indices must be integers
-2025-04-14 06:09:18,342 - backend.app - INFO - 应用启动
-2025-04-14 06:09:18,342 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 06:09:18,342 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 06:09:18,384 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 06:09:18,384 - backend.app - INFO - 默认模型加载成功
-2025-04-14 06:09:52,453 - backend.app - ERROR - 检测过程出错: unhashable type: 'dict'
-Traceback (most recent call last):
-  File "/mnt/data/Code/yyh/yolov11/backend/app/api/detection.py", line 47, in detect
-    result = detection_service.process_image(temp_path, model_path)
-  File "/mnt/data/Code/yyh/yolov11/backend/app/services/detection.py", line 194, in process_image
-    class_counts[category] = class_counts.get(category, 0) + 1
-TypeError: unhashable type: 'dict'
-2025-04-14 06:14:19,465 - backend.app - INFO - 应用启动
-2025-04-14 06:14:19,466 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 06:14:19,466 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 06:14:19,505 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 06:14:19,506 - backend.app - INFO - 默认模型加载成功
-2025-04-14 06:14:38,989 - backend.app - ERROR - 检测过程出错: name 'category' is not defined
-Traceback (most recent call last):
-  File "/mnt/data/Code/yyh/yolov11/backend/app/api/detection.py", line 47, in detect
-    result = detection_service.process_image(temp_path, model_path)
-  File "/mnt/data/Code/yyh/yolov11/backend/app/services/detection.py", line 199, in process_image
-    label = f"{category} {conf*100:.1f}%"
-NameError: name 'category' is not defined
-2025-04-14 06:19:02,474 - backend.app - INFO - 应用启动
-2025-04-14 06:19:02,475 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 06:19:02,475 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 06:19:02,515 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 06:19:02,515 - backend.app - INFO - 默认模型加载成功
-2025-04-14 06:21:54,233 - backend.app.services.detection - INFO - 检测到 8 个目标
-2025-04-14 06:21:54,233 - backend.app.services.detection - INFO - 类别统计: {'基础设施': {'count': 3, 'items': ['红线', '大门']}, '垂直运输机械': {'count': 5, 'items': ['塔吊']}}
-2025-04-14 06:22:57,855 - backend.app - INFO - 应用启动
-2025-04-14 06:22:57,856 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 06:22:57,856 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 06:22:57,895 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 06:22:57,895 - backend.app - INFO - 默认模型加载成功
-2025-04-14 06:24:53,243 - backend.app.services.detection - INFO - 检测到 12 个目标
-2025-04-14 06:24:53,243 - backend.app.services.detection - INFO - 类别统计: {'基础设施': {'count': 2, 'items': ['红线', '大门']}, '垂直运输机械': {'count': 2, 'items': ['塔吊']}, '临时设施-生活及办公区': {'count': 6, 'items': ['宿舍', '办公室']}, '临时设施-生产加工区': {'count': 2, 'items': ['钢筋加工厂']}}
-2025-04-14 06:37:51,625 - backend.app - INFO - 应用启动
-2025-04-14 06:37:51,626 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 06:37:51,626 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 06:37:51,666 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 06:37:51,666 - backend.app - INFO - 默认模型加载成功
-2025-04-14 06:44:38,750 - backend.app - INFO - 应用启动
-2025-04-14 06:44:38,751 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 06:44:38,751 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 06:44:38,790 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 06:44:38,790 - backend.app - INFO - 默认模型加载成功
-2025-04-14 06:50:01,849 - backend.app - INFO - 应用启动
-2025-04-14 06:50:01,850 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 06:50:01,850 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 06:50:01,889 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 06:50:01,890 - backend.app - INFO - 默认模型加载成功
-2025-04-14 06:58:29,457 - backend.app - INFO - 应用启动
-2025-04-14 06:58:29,458 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 06:58:29,458 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 06:58:29,498 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 06:58:29,498 - backend.app - INFO - 默认模型加载成功
-2025-04-14 07:05:01,589 - backend.app - INFO - 应用启动
-2025-04-14 07:05:01,590 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 07:05:01,591 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 07:05:01,631 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 07:05:01,632 - backend.app - INFO - 默认模型加载成功
-2025-04-14 07:11:00,684 - backend.app.services.detection - INFO - 检测到 8 个目标
-2025-04-14 07:11:00,684 - backend.app.services.detection - INFO - 类别统计: {'基础设施': {'count': 3, 'items': ['红线', '大门']}, '垂直运输机械': {'count': 5, 'items': ['塔吊']}}
-2025-04-14 07:19:55,431 - backend.app - INFO - 应用启动
-2025-04-14 07:19:55,432 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 07:19:55,432 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 07:19:55,472 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 07:19:55,472 - backend.app - INFO - 默认模型加载成功
-2025-04-14 07:23:58,793 - backend.app.services.detection - INFO - 检测到 8 个目标
-2025-04-14 07:23:58,793 - backend.app.services.detection - INFO - 类别统计: {'基础设施': {'count': 3, 'items': ['红线', '大门']}, '垂直运输机械': {'count': 5, 'items': ['塔吊']}}
-2025-04-14 07:32:54,269 - backend.app - INFO - 应用启动
-2025-04-14 07:32:54,270 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 07:32:54,270 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 07:32:54,321 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 07:32:54,321 - backend.app - INFO - 默认模型加载成功
-2025-04-14 07:40:50,618 - backend.app - INFO - 应用启动
-2025-04-14 07:40:50,619 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 07:40:50,619 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 07:40:50,659 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 07:40:50,659 - backend.app - INFO - 默认模型加载成功
-2025-04-14 07:47:21,093 - backend.app - INFO - 应用启动
-2025-04-14 07:47:21,094 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 07:47:21,094 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 07:47:21,134 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 07:47:21,134 - backend.app - INFO - 默认模型加载成功
-2025-04-14 07:50:59,334 - backend.app - INFO - 应用启动
-2025-04-14 07:50:59,335 - backend.app - INFO - 正在加载默认模型...
-2025-04-14 07:50:59,335 - backend.app.services.detection - INFO - 正在加载默认模型: best.pt
-2025-04-14 07:50:59,373 - backend.app.services.detection - INFO - 默认模型加载成功
-2025-04-14 07:50:59,374 - backend.app - INFO - 默认模型加载成功
-2025-04-14 07:53:03,229 - backend.app.services.detection - INFO - 检测到 12 个目标
-2025-04-14 07:53:03,229 - backend.app.services.detection - INFO - 类别统计: {'基础设施': {'count': 2, 'items': ['红线', '大门']}, '垂直运输机械': {'count': 2, 'items': ['塔吊']}, '临时设施-生活及办公区': {'count': 6, 'items': ['宿舍', '办公室']}, '临时设施-生产加工区': {'count': 2, 'items': ['钢筋加工厂']}}
-2025-04-14 07:58:24,159 - backend.app - INFO - 应用启动
+2026-05-02 18:49:19,885 - backend.app.services.docx_service - INFO - 提取图片 10: image_010.jpg (上下文: 6.3 主体结构阶段 图10：主体结构阶段平面布置图。布置塔吊（TC6015型号2台）、施工电梯（SC200/200型号）、钢筋堆场、PC构件堆场及材料周转区。...)
+2026-05-02 18:49:19,890 - backend.app.services.docx_service - INFO - 从文档中提取了 10 张图片
+2026-05-02 18:51:20,281 - backend.app - INFO - 应用启动
+2026-05-02 18:51:20,282 - backend.app - INFO - 正在加载默认模型...
+2026-05-02 18:51:20,283 - backend.app.services.detection - INFO - 正在加载模型: c:\Users\wint\Desktop\yolov11\backend\models\best.pt
+2026-05-02 18:51:20,420 - backend.app.services.detection - INFO - 模型加载成功
+2026-05-02 18:51:20,421 - backend.app - INFO - 默认模型加载成功
+2026-05-02 18:56:25,488 - backend.app.services.docx_service - INFO - 提取图片 1: image_001.jpg (上下文: 下图为施工分区规划图，展示了三个施工分区的范围和位置关系： 图1：施工分区规划图。图中展示A区（左侧）、B区（中部）、C区（右侧）三个分区。A区占地约8000㎡...)
+2026-05-02 18:56:25,490 - backend.app.services.docx_service - INFO - 提取图片 2: image_002.jpg (上下文: 施工总体进度计划采用横道图形式，关键节点如下： 图2：施工进度计划横道图。主体结构施工计划于 2026年6月1日至 2027年3月31日，装饰装修阶段计划于 2...)
+2026-05-02 18:56:25,492 - backend.app.services.docx_service - INFO - 提取图片 3: image_003.jpg (上下文: 施工现场总平面布置图包含施工道路、材料堆场、加工区、办公生活区等临时设施： 图3：施工现场总平面布置图。图中标注了施工大门（1#大门、2#大门）、围挡、办公区（...)
+2026-05-02 18:56:25,495 - backend.app.services.docx_service - INFO - 提取图片 4: image_004.jpg (上下文: 施工现场临时用电从业主提供的 630KVA 箱变接入，设置总配电房1座，分配电箱6处。 图4：临时用电平面布置图。1#配电房位于场地西北角，2#配电房位于场地东...)
+2026-05-02 18:56:25,497 - backend.app.services.docx_service - INFO - 提取图片 5: image_005.jpg (上下文: 施工用水从市政DN200给水管接入，场内设置供水立管2处、消防栓8处。 图5：临时用水平面布置图。供水主管沿施工道路敷设，消防栓均匀布置在各施工分区。 四、土方...)
+2026-05-02 18:56:25,499 - backend.app.services.docx_service - INFO - 提取图片 6: image_006.jpg (上下文: 本工程基坑开挖深度约 5.2m，采用放坡+土钉墙支护方案。土方开挖总量约 12 万 m³。 图6：土方工程图/基础结构图。展示基坑开挖范围及支护结构布置。基础采...)
+2026-05-02 18:56:25,501 - backend.app.services.docx_service - INFO - 提取图片 7: image_007.jpg (上下文: 项目地块北侧为城市主干道，东侧为已建成住宅小区，南侧为规划市政公园，西侧为空地。 图7：项目区位图/周边环境图。展示项目位置与周边道路、建筑的关系。 六、各阶段...)
+2026-05-02 18:56:25,503 - backend.app.services.docx_service - INFO - 提取图片 8: image_008.jpg (上下文: 6.1 施工准备阶段 图8：施工准备阶段平面布置图。完成场地平整、临时道路、围挡及临建设施搭建。 6.2 土方阶段...)
+2026-05-02 18:56:25,506 - backend.app.services.docx_service - INFO - 提取图片 9: image_009.jpg (上下文: 6.2 土方阶段 图9：土方阶段平面布置图。布置土方开挖机械、运输通道及临时堆土场。 6.3 主体结构阶段...)
+2026-05-02 18:56:25,507 - backend.app.services.docx_service - INFO - 提取图片 10: image_010.jpg (上下文: 6.3 主体结构阶段 图10：主体结构阶段平面布置图。布置塔吊（TC6015型号2台）、施工电梯（SC200/200型号）、钢筋堆场、PC构件堆场及材料周转区。...)
+2026-05-02 18:56:25,508 - backend.app.services.docx_service - INFO - 从文档中提取了 10 张图片
+2026-05-02 18:56:27,676 - backend.app.api.docx - INFO - 分析进度: 1/10 - image_001.jpg
+2026-05-02 18:56:27,678 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: c:\Users\wint\Desktop\yolov11\backend\docx_images\4a94d352\image_001.jpg (上下文: 下图为施工分区规划图，展示了三个施工分区的范围和位置关系： 图1：施工分区规划图。图中展示A区（左侧）、B区（中部）、C...)
+2026-05-02 18:57:10,332 - backend.app - INFO - 应用启动
+2026-05-02 18:57:10,333 - backend.app - INFO - 正在加载默认模型...
+2026-05-02 18:57:10,334 - backend.app.services.detection - INFO - 正在加载模型: c:\Users\wint\Desktop\yolov11\backend\models\best.pt
+2026-05-02 18:57:10,488 - backend.app.services.detection - INFO - 模型加载成功
+2026-05-02 18:57:10,488 - backend.app - INFO - 默认模型加载成功
+2026-05-02 19:09:32,892 - backend.app - INFO - 应用启动
+2026-05-02 19:09:32,894 - backend.app - INFO - 正在加载默认模型...
+2026-05-02 19:09:32,894 - backend.app.services.detection - INFO - 正在加载模型: c:\Users\wint\Desktop\yolov11\backend\models\best.pt
+2026-05-02 19:09:33,031 - backend.app.services.detection - INFO - 模型加载成功
+2026-05-02 19:09:33,032 - backend.app - INFO - 默认模型加载成功
+2026-05-02 19:12:20,113 - backend.app.services.docx_service - INFO - 提取图片 1: image_001.jpg (上下文: 下图为施工分区规划图，展示了三个施工分区的范围和位置关系： 图1：施工分区规划图。图中展示A区（左侧）、B区（中部）、C区（右侧）三个分区。A区占地约8000㎡...)
+2026-05-02 19:12:20,115 - backend.app.services.docx_service - INFO - 提取图片 2: image_002.jpg (上下文: 施工总体进度计划采用横道图形式，关键节点如下： 图2：施工进度计划横道图。主体结构施工计划于 2026年6月1日至 2027年3月31日，装饰装修阶段计划于 2...)
+2026-05-02 19:12:20,117 - backend.app.services.docx_service - INFO - 提取图片 3: image_003.jpg (上下文: 施工现场总平面布置图包含施工道路、材料堆场、加工区、办公生活区等临时设施： 图3：施工现场总平面布置图。图中标注了施工大门（1#大门、2#大门）、围挡、办公区（...)
+2026-05-02 19:12:20,119 - backend.app.services.docx_service - INFO - 提取图片 4: image_004.jpg (上下文: 施工现场临时用电从业主提供的 630KVA 箱变接入，设置总配电房1座，分配电箱6处。 图4：临时用电平面布置图。1#配电房位于场地西北角，2#配电房位于场地东...)
+2026-05-02 19:12:20,121 - backend.app.services.docx_service - INFO - 提取图片 5: image_005.jpg (上下文: 施工用水从市政DN200给水管接入，场内设置供水立管2处、消防栓8处。 图5：临时用水平面布置图。供水主管沿施工道路敷设，消防栓均匀布置在各施工分区。 四、土方...)
+2026-05-02 19:12:20,123 - backend.app.services.docx_service - INFO - 提取图片 6: image_006.jpg (上下文: 本工程基坑开挖深度约 5.2m，采用放坡+土钉墙支护方案。土方开挖总量约 12 万 m³。 图6：土方工程图/基础结构图。展示基坑开挖范围及支护结构布置。基础采...)
+2026-05-02 19:12:20,125 - backend.app.services.docx_service - INFO - 提取图片 7: image_007.jpg (上下文: 项目地块北侧为城市主干道，东侧为已建成住宅小区，南侧为规划市政公园，西侧为空地。 图7：项目区位图/周边环境图。展示项目位置与周边道路、建筑的关系。 六、各阶段...)
+2026-05-02 19:12:20,127 - backend.app.services.docx_service - INFO - 提取图片 8: image_008.jpg (上下文: 6.1 施工准备阶段 图8：施工准备阶段平面布置图。完成场地平整、临时道路、围挡及临建设施搭建。 6.2 土方阶段...)
+2026-05-02 19:12:20,129 - backend.app.services.docx_service - INFO - 提取图片 9: image_009.jpg (上下文: 6.2 土方阶段 图9：土方阶段平面布置图。布置土方开挖机械、运输通道及临时堆土场。 6.3 主体结构阶段...)
+2026-05-02 19:12:20,131 - backend.app.services.docx_service - INFO - 提取图片 10: image_010.jpg (上下文: 6.3 主体结构阶段 图10：主体结构阶段平面布置图。布置塔吊（TC6015型号2台）、施工电梯（SC200/200型号）、钢筋堆场、PC构件堆场及材料周转区。...)
+2026-05-02 19:12:20,132 - backend.app.services.docx_service - INFO - 从文档中提取了 10 张图片
+2026-05-02 19:12:25,372 - backend.app.api.docx - INFO - 单张分析 [c8afc3c8] #1: image_001.jpg
+2026-05-02 19:12:25,374 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: c:\Users\wint\Desktop\yolov11\backend\docx_images\c8afc3c8\image_001.jpg (上下文: 下图为施工分区规划图，展示了三个施工分区的范围和位置关系： 图1：施工分区规划图。图中展示A区（左侧）、B区（中部）、C...)
+2026-05-02 19:12:38,142 - backend.app.services.ai_analysis_service - ERROR - AI API返回错误: 500 {"code":50500,"message":"Request processing failed due to an unknown error.","data":null}
+2026-05-02 19:39:21,283 - backend.app - INFO - 应用启动
+2026-05-02 19:39:21,285 - backend.app - INFO - 正在加载默认模型...
+2026-05-02 19:39:21,285 - backend.app.services.detection - INFO - 正在加载模型: C:\Users\wint\Desktop\yolov11\backend\models\best.pt
+2026-05-02 19:39:21,419 - backend.app.services.detection - INFO - 模型加载成功
+2026-05-02 19:39:21,420 - backend.app - INFO - 默认模型加载成功
+2026-05-02 19:39:38,114 - backend.app.main - INFO - 接收到根路由请求
+2026-05-02 19:41:14,753 - backend.app - INFO - 应用启动
+2026-05-02 19:41:14,755 - backend.app - INFO - 正在加载默认模型...
+2026-05-02 19:41:14,755 - backend.app.services.detection - INFO - 正在加载模型: C:\Users\wint\Desktop\yolov11\backend\models\best.pt
+2026-05-02 19:41:14,893 - backend.app.services.detection - INFO - 模型加载成功
+2026-05-02 19:42:01,569 - backend.app.services.docx_service - INFO - 提取图片 1: image_001.jpg (上下文: 2.1 总平面布置图 图1：施工现场总平面布置图。展示了施工区、办公区、生活区、材料堆场、钢筋加工区、施工大门及临时道路的完整布局，标注清晰，比例准确。 2.2...)
