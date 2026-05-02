@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, current_app
-from backend.app.core.security import require_auth
+from backend.app.utils.security import require_auth
 from backend.app.services.detection import detection_service
 import os
 import gc

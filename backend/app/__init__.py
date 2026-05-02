@@ -1,6 +1,6 @@
 from flask import Flask, send_from_directory
 from flask_cors import CORS
-from backend.config.config import Config
+from backend.app.config import Config
 from backend.app.api import init_api
 from backend.app.services.detection import detection_service
 import logging

@@ -81,13 +81,10 @@ class DetectionService:
             
             # 加载中文字体
             self.font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'backend', 'fonts', 'simsun(1).ttc')
-            # 如果 simsun 不存在则尝试 SimHei
             if not os.path.exists(self.font_path) or os.path.getsize(self.font_path) == 0:
-                alt_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 'backend', 'fonts', 'SimHei.ttf')
-                if os.path.exists(alt_path) and os.path.getsize(alt_path) > 0:
-                    self.font_path = alt_path
-            if not os.path.exists(self.font_path):
-                self.logger.warning(f"中文字体文件不存在: {self.font_path}")
+                self.font_path = None
+            if self.font_path is None:
+                self.logger.warning(f"中文字体文件不存在")
             
             # 扫描可用模型
             self.available_models = {}

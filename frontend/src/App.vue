@@ -8,7 +8,7 @@
         <detection-panel />
       </el-main>
       <el-footer>
-        <p>© 2025 海南机器管招投标项目-建筑图纸识别系统v1.0</p>
+        <p>© 2026 海南机器管招投标项目-建筑图纸识别系统v1.0</p>
       </el-footer>
     </el-container>
   </div>

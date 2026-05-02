@@ -1,22 +1,19 @@
-# 忽略数据集目录
-datasets/CAD2024/
-training/data/
+# 数据集
+datasets/
 
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
 
 # 日志文件
 *.log
 backend/logs/
 
-# 模型文件
+# 模型文件（过大不入库）
 *.pt
 *.pth
-models/checkpoints/
-models/pretrained/
-backend/models/
 
 # 系统文件
 .DS_Store
@@ -31,7 +28,7 @@ venv/
 *.swp
 *.swo
 
-# 大文件
+# 图片文件
 *.png
 *.jpg
 *.jpeg
@@ -40,14 +37,10 @@ venv/
 # 前端
 frontend/node_modules/
 frontend/dist/
-frontend/lib/
 
-# 缓存
+# 缓存和上传
 backend/cache/
 backend/uploads/
 
 # 训练结果
 runs/
-
-# Python包
-*.egg-info/
