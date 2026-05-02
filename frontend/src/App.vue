@@ -96,30 +96,30 @@ body {
 }
 
 .brand-logo {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .brand-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .brand-text {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   letter-spacing: 0.5px;
   line-height: 1.3;
 }
 
 .brand-sub {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 400;
-  opacity: 0.7;
-  letter-spacing: 0.3px;
+  opacity: 0.75;
+  letter-spacing: 0.5px;
 }
 
 .header-status {
