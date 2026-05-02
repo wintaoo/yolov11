@@ -1,1344 +1,515 @@
 <template>
-  <div class="detection-container">
-      <el-container>
-        <!-- 左侧文件树 -->
-        <el-aside width="280px" class="file-tree-container">
-          <el-card class="file-tree-card">
-            <template #header>
-              <div class="card-header">
-                <span class="section-title">文件列表</span>
-                <input
-                  type="file"
-                  ref="folderInput"
-                  @change="handleFolderSelect"
-                  style="display: none"
-                  webkitdirectory
-                  directory>
-                <el-button type="primary" class="upload-btn" @click="triggerFolderSelect">
-                  <el-icon><folder-add /></el-icon>
-                  选择文件夹
-                </el-button>
+  <div class="detection-panel">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <label class="upload-trigger">
+          <el-icon :size="18"><FolderAdd /></el-icon>
+          <span>打开文件夹</span>
+          <input type="file" ref="folderInput" @change="handleFolderSelect" webkitdirectory directory hidden />
+        </label>
+        <span class="file-count" v-if="imageFiles.length">
+          {{ currentImageIndex + 1 }} / {{ imageFiles.length }}
+        </span>
+      </div>
+      <div class="toolbar-right">
+        <el-button-group>
+          <el-button size="small" @click="showPreviousImage" :disabled="!hasPreviousImage">
+            <el-icon><ArrowLeft /></el-icon>
+          </el-button>
+          <el-button size="small" @click="showNextImage" :disabled="!hasNextImage">
+            <el-icon><ArrowRight /></el-icon>
+          </el-button>
+        </el-button-group>
+        <el-button size="small" type="danger" plain @click="clearResults" :disabled="!detectionResult">
+          <el-icon><Delete /></el-icon>
+          清除
+        </el-button>
+      </div>
+    </div>
+
+    <div class="workspace" v-if="imageFiles.length">
+      <div class="viewer-area">
+        <div class="viewer-header">
+          <div class="viewer-tabs">
+            <button :class="{ active: viewMode === 'compare' }" @click="viewMode = 'compare'">对比视图</button>
+            <button :class="{ active: viewMode === 'result' }" @click="viewMode = 'result'">仅看结果</button>
+          </div>
+          <div class="viewer-info" v-if="currentFile">
+            <span class="filename">{{ currentFile.name }}</span>
+            <span class="detect-time" v-if="processingTime">检测耗时 {{ processingTime }}ms</span>
+          </div>
+        </div>
+
+        <div class="image-stage">
+          <div class="image-panel" :class="{ half: viewMode === 'compare', full: viewMode === 'result' }">
+            <div class="image-label">原始图片</div>
+            <div class="image-wrapper">
+              <img v-if="originalImage" :src="originalImage" class="preview-img" />
+              <div v-else class="empty-state">
+                <el-icon :size="40"><Picture /></el-icon>
+                <span>未加载图片</span>
               </div>
-            </template>
-            
-            <div class="tree-wrapper">
-              <el-tree
-                ref="fileTree"
-                :data="fileTreeData"
-                :props="{ label: 'name' }"
-                @node-click="handleFileSelect"
-                node-key="path"
-                :filter-node-method="filterNode"
-                class="file-tree">
-                <template #default="{ node, data }">
-                  <div class="custom-tree-node">
-                    <el-icon><document v-if="data.type === 'file'" /><folder v-else /></el-icon>
-                    <el-tooltip 
-                      :content="node.label" 
-                      placement="right" 
-                      :show-after="1000"
-                      :hide-after="2000">
-                      <span class="node-label">{{ node.label }}</span>
-                    </el-tooltip>
-                  </div>
-                </template>
-              </el-tree>
             </div>
-          </el-card>
-        </el-aside>
+          </div>
 
-        <!-- 主要内容区域 -->
-        <el-main class="main-content">
-          <!-- 操作按钮区 -->
-          <el-row class="action-bar" :gutter="24">
-            <el-col :span="8">
-              <el-button 
-                type="primary" 
-                @click="handleDetect()" 
-                :loading="detecting" 
-                :disabled="!currentFile" 
-                class="action-btn material-btn material-btn-primary">
-                <el-icon><video-play /></el-icon>
-                开始检测
-              </el-button>
-            </el-col>
-            <el-col :span="8">
-              <el-button 
-                type="success" 
-                @click="downloadResults" 
-                :disabled="!detectionResult" 
-                class="action-btn material-btn material-btn-success">
-                <el-icon><download /></el-icon>
-                导出结果
-              </el-button>
-            </el-col>
-            <el-col :span="8">
-              <el-button 
-                type="warning" 
-                @click="clearResults" 
-                class="action-btn material-btn material-btn-warning">
-                <el-icon><delete /></el-icon>
-                清除结果
-              </el-button>
-            </el-col>
-          </el-row>
+          <div class="image-panel result-panel" :class="{ half: viewMode === 'compare', hidden: viewMode !== 'compare' }">
+            <div class="image-label">
+              检测结果
+              <span v-if="detectionData.length" class="badge">{{ detectionData.length }}个目标</span>
+            </div>
+            <div class="image-wrapper">
+              <div v-if="detecting" class="loading-overlay">
+                <div class="spinner"></div>
+                <span>AI 正在分析中...</span>
+              </div>
+              <img v-else-if="detectedImage" :src="detectedImage" class="preview-img" />
+              <div v-else class="empty-state">
+                <el-icon :size="40"><PictureFilled /></el-icon>
+                <span>点击"开始检测"</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
-          <!-- 图片展示区域 -->
-          <el-row :gutter="24" class="image-display-area">
-            <!-- 原图 -->
-            <el-col :span="12">
-              <el-card class="image-card material-card">
-                <template #header>
-                  <div class="card-header">
-                    <span class="section-title">原始图片</span>
-                    <span v-if="currentFile" class="file-name">{{ currentFile.name }}</span>
-                    <div class="image-navigation">
-                      <el-button 
-                        type="primary" 
-                        @click="showPreviousImage"
-                        :disabled="!hasPreviousImage"
-                        class="nav-button material-btn">
-                        <el-icon><arrow-left /></el-icon>
-                        上一张
-                      </el-button>
-                      <el-button 
-                        type="primary" 
-                        @click="showNextImage"
-                        :disabled="!hasNextImage"
-                        class="nav-button material-btn">
-                        <el-icon><arrow-right /></el-icon>
-                        下一张
-                      </el-button>
-                    </div>
-                  </div>
-                </template>
-                <div class="image-container">
-                  <el-image 
-                    v-if="originalImage"
-                    :src="originalImage"
-                    :preview-src-list="[originalImage]"
-                    fit="contain"
-                    :initial-index="0"
-                    :zoom-rate="1.2"
-                    :preview-teleported="true"
-                    class="display-image image-display" />
-                  <div v-else class="empty-image">
-                    <el-icon><picture-icon /></el-icon>
-                    <span>请选择图片</span>
-                  </div>
-                </div>
-              </el-card>
-            </el-col>
+        <div class="filmstrip" v-if="imageFiles.length > 1">
+          <div
+            v-for="(file, idx) in imageFiles"
+            :key="file.path"
+            class="filmstrip-item"
+            :class="{ active: idx === currentImageIndex }"
+            @click="selectImage(idx)"
+          >
+            <span class="filmstrip-name">{{ file.name }}</span>
+          </div>
+        </div>
+      </div>
 
-            <!-- 检测结果 -->
-            <el-col :span="12">
-              <el-card class="image-card material-card">
-                <template #header>
-                  <div class="card-header">
-                    <span class="section-title">检测结果</span>
-                  </div>
-                </template>
-                <div class="image-container">
-                  <template v-if="detecting">
-                    <div class="loading-container">
-                      <div class="loading-animation">
-                        <el-icon class="loading-icon"><loading /></el-icon>
-                        <div class="loading-text">
-                          <span>正在检测中</span>
-                          <span class="dots">...</span>
-                        </div>
-                        <div class="progress-bar">
-                          <div class="progress-inner"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </template>
-                  <template v-else>
-                    <div class="detected-image-wrapper" ref="imageContainer">
-                      <el-image 
-                        v-if="detectedImage"
-                        ref="detectedImageRef"
-                        :src="detectedImage"
-                        :preview-src-list="[detectedImage]"
-                        fit="contain"
-                        :initial-index="0"
-                        :zoom-rate="1.2"
-                        :preview-teleported="true"
-                        class="display-image image-display" 
-                        @load="handleImageLoad" />
+      <aside class="sidebar">
+        <div class="action-card">
+          <el-button
+            type="primary"
+            size="large"
+            @click="handleDetect"
+            :loading="detecting"
+            :disabled="!currentFile"
+            class="detect-btn"
+          >
+            <el-icon v-if="!detecting"><VideoPlay /></el-icon>
+            {{ detecting ? '检测中...' : '开始检测' }}
+          </el-button>
+          <el-button
+            v-if="detectionResult"
+            type="success"
+            size="large"
+            plain
+            @click="downloadResults"
+            class="export-btn"
+          >
+            <el-icon><Download /></el-icon>
+            导出结果
+          </el-button>
+        </div>
 
-                      <div v-if="detectedImage && selectedBbox" class="bbox-overlay">
-                        <div class="bbox-highlight" 
-                             :style="{
-                               left: bboxLeft,
-                               top: bboxTop,
-                               width: bboxWidth,
-                               height: bboxHeight,
-                               borderColor: currentBboxColor
-                             }"></div>
-                      </div>
-                      
-                      <div v-else-if="!detectedImage" class="empty-image">
-                        <el-icon><picture-filled /></el-icon>
-                        <span>等待检测</span>
-                      </div>
-                    </div>
-                  </template>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
+        <div class="stats-grid" v-if="detectionResult?.data?.class_counts">
+          <h4 class="section-label">检测统计</h4>
+          <div
+            v-for="(category, name) in detectionResult.data.class_counts"
+            :key="name"
+            class="stat-item"
+          >
+            <span class="stat-dot" :style="{ background: categoryColors[name] || '#6366f1' }"></span>
+            <span class="stat-name">{{ name }}</span>
+            <span class="stat-num">{{ category.count }}</span>
+          </div>
+        </div>
 
-          <!-- 检测信息 -->
-          <el-row v-if="detectionResult" class="detection-info-area">
-            <el-col :span="24">
-              <el-card class="info-card">
-                <template #header>
-                  <div class="card-header">
-                    <span class="section-title">检测信息</span>
-                    <div class="download-buttons">
-                      <el-button type="primary" @click="exportAsJson" class="download-btn json-btn">
-                        <el-icon><document /></el-icon>
-                        导出JSON
-                      </el-button>
-                      <el-button type="success" @click="downloadImageResult" class="download-btn">
-                        <el-icon><download /></el-icon>
-                        导出图片
-                      </el-button>
-                    </div>
-                  </div>
-                </template>
-                <el-descriptions :column="2" border class="info-descriptions">
-                  <el-descriptions-item label="检测目标数量">
-                    <span class="info-value">{{ detectionData?.length || 0 }}</span>
-                  </el-descriptions-item>
-                  <el-descriptions-item label="处理时间">
-                    <span class="info-value">{{ processingTime }}ms</span>
-                  </el-descriptions-item>
-                </el-descriptions>
+        <div class="detection-list" v-if="detectionData.length">
+          <h4 class="section-label">检测列表</h4>
+          <div
+            v-for="(item, idx) in detectionData"
+            :key="idx"
+            class="detection-item"
+            @mouseenter="highlightBbox(item.bbox)"
+            @mouseleave="highlightBbox(null)"
+          >
+            <span class="item-color" :style="{ background: categoryColors[item.category] || '#6366f1' }"></span>
+            <div class="item-info">
+              <span class="item-class">{{ item.class }}</span>
+              <span class="item-category">{{ item.category }}</span>
+            </div>
+            <span class="item-confidence">{{ (item.confidence * 100).toFixed(0) }}%</span>
+          </div>
+        </div>
 
-                <!-- 分类检测结果表格 -->
-                <div class="categorized-results-section">
-                  <h3>分类检测结果</h3>
-                  <el-tabs type="border-card" class="detection-tabs" v-model="activeTabName">
-                  <!-- 垂直运输机械 -->
-                  <el-tab-pane v-if="getCategoryItems('垂直运输机械').length > 0" label="垂直运输机械" name="vertical_transport">
-                    <div class="category-description">塔吊等垂直运输设备</div>
-                    <el-table 
-                      :data="getCategoryItems('垂直运输机械')" 
-                      stripe 
-                      style="width: 100%" 
-                      :row-class-name="tableRowClassName"
-                      :virtual-scrolling="virtualScrollEnabled"
-                      :row-height="itemHeight"
-                      @scroll="handleScroll">
-                        <el-table-column prop="class" label="设备名称" />
-                      <el-table-column prop="confidence" label="置信度" width="100">
-                        <template #default="scope">
-                          {{ (scope.row.confidence * 100).toFixed(2) }}%
-                        </template>
-                      </el-table-column>
-                      <el-table-column label="位置" width="120">
-                          <template #default="scope">
-                          <el-button 
-                            size="small" 
-                            type="primary" 
-                            @click="showBoundingBox(scope.row.bbox, '垂直运输机械')">
-                            <el-icon><location /></el-icon>
-                            查看位置
-                          </el-button>
-                          </template>
-                        </el-table-column>
-                    </el-table>
-                  </el-tab-pane>
-                  
-                  <!-- 施工机械 -->
-                  <el-tab-pane v-if="getCategoryItems('施工机械').length > 0" label="施工机械" name="machinery">
-                    <div class="category-description">起重机、挖掘机、搅拌机等施工现场使用的机械设备</div>
-                    <el-table 
-                      :data="getCategoryItems('施工机械')" 
-                      stripe 
-                      style="width: 100%" 
-                      :row-class-name="tableRowClassName"
-                      :virtual-scrolling="virtualScrollEnabled"
-                      :row-height="itemHeight"
-                      @scroll="handleScroll">
-                      <el-table-column prop="class" label="设备名称" />
-                        <el-table-column label="位置" width="120">
-                          <template #default="scope">
-                          <el-button 
-                            size="small" 
-                            type="primary" 
-                            @click="showBoundingBox(scope.row.bbox, '施工机械')">
-                              <el-icon><location /></el-icon>
-                              查看位置
-                            </el-button>
-                          </template>
-                        </el-table-column>
-                      </el-table>
-                    </el-tab-pane>
-                    
-                    <!-- 临时设施-生活及办公区 -->
-                    <el-tab-pane v-if="getCategoryItems('临时设施-生活及办公区').length > 0" label="生活及办公区" name="living">
-                      <div class="category-description">宿舍、办公室、厕所等工地上的临时生活与办公设施</div>
-                    <el-table 
-                      :data="getCategoryItems('临时设施-生活及办公区')" 
-                      stripe 
-                      style="width: 100%" 
-                      :row-class-name="tableRowClassName"
-                      :virtual-scrolling="virtualScrollEnabled"
-                      :row-height="itemHeight"
-                      @scroll="handleScroll">
-                        <el-table-column prop="class" label="设施名称" />
-                        <el-table-column label="位置" width="120">
-                          <template #default="scope">
-                          <el-button 
-                            size="small" 
-                            type="primary" 
-                            @click="showBoundingBox(scope.row.bbox, '临时设施-生活及办公区')">
-                              <el-icon><location /></el-icon>
-                              查看位置
-                            </el-button>
-                          </template>
-                        </el-table-column>
-                      </el-table>
-                    </el-tab-pane>
-                    
-                    <!-- 临时设施-生产加工区 -->
-                    <el-tab-pane v-if="getCategoryItems('临时设施-生产加工区').length > 0" label="生产加工区" name="production">
-                      <div class="category-description">钢筋加工厂等材料加工场地</div>
-                    <el-table 
-                      :data="getCategoryItems('临时设施-生产加工区')" 
-                      stripe 
-                      style="width: 100%" 
-                      :row-class-name="tableRowClassName"
-                      :virtual-scrolling="virtualScrollEnabled"
-                      :row-height="itemHeight"
-                      @scroll="handleScroll">
-                        <el-table-column prop="class" label="设施名称" />
-                        <el-table-column label="位置" width="120">
-                          <template #default="scope">
-                          <el-button 
-                            size="small" 
-                            type="primary" 
-                            @click="showBoundingBox(scope.row.bbox, '临时设施-生产加工区')">
-                              <el-icon><location /></el-icon>
-                              查看位置
-                            </el-button>
-                          </template>
-                        </el-table-column>
-                      </el-table>
-                    </el-tab-pane>
-                    
-                    <!-- 临时设施-辅助设施 -->
-                    <el-tab-pane v-if="getCategoryItems('临时设施-辅助设施').length > 0" label="辅助设施" name="auxiliary">
-                      <div class="category-description">楼梯等临时通行和辅助设施</div>
-                    <el-table 
-                      :data="getCategoryItems('临时设施-辅助设施')" 
-                      stripe 
-                      style="width: 100%" 
-                      :row-class-name="tableRowClassName"
-                      :virtual-scrolling="virtualScrollEnabled"
-                      :row-height="itemHeight"
-                      @scroll="handleScroll">
-                        <el-table-column prop="class" label="设施名称" />
-                        <el-table-column label="位置" width="120">
-                          <template #default="scope">
-                          <el-button 
-                            size="small" 
-                            type="primary" 
-                            @click="showBoundingBox(scope.row.bbox, '临时设施-辅助设施')">
-                              <el-icon><location /></el-icon>
-                              查看位置
-                            </el-button>
-                          </template>
-                        </el-table-column>
-                      </el-table>
-                    </el-tab-pane>
-                    
-                    <!-- 基础设施 -->
-                    <el-tab-pane v-if="getCategoryItems('基础设施').length > 0" label="基础设施" name="infrastructure">
-                      <div class="category-description">大门、红线、道路等基础设施</div>
-                    <el-table 
-                      :data="getCategoryItems('基础设施')" 
-                      stripe 
-                      style="width: 100%" 
-                      :row-class-name="tableRowClassName"
-                      :virtual-scrolling="virtualScrollEnabled"
-                      :row-height="itemHeight"
-                      @scroll="handleScroll">
-                        <el-table-column prop="class" label="设施名称" />
-                        <el-table-column label="位置" width="120">
-                          <template #default="scope">
-                          <el-button 
-                            size="small" 
-                            type="primary" 
-                            @click="showBoundingBox(scope.row.bbox, '基础设施')">
-                              <el-icon><location /></el-icon>
-                              查看位置
-                            </el-button>
-                          </template>
-                        </el-table-column>
-                      </el-table>
-                    </el-tab-pane>
-                    
-                    <!-- 其他未归类物体 -->
-                    <el-tab-pane v-if="getCategoryItems('其他').length > 0" label="其他物体" name="others">
-                      <div class="category-description">其他未归类的检测物体</div>
-                    <el-table 
-                      :data="getCategoryItems('其他')" 
-                      stripe 
-                      style="width: 100%" 
-                      :row-class-name="tableRowClassName"
-                      :virtual-scrolling="virtualScrollEnabled"
-                      :row-height="itemHeight"
-                      @scroll="handleScroll">
-                        <el-table-column prop="class" label="物体名称" />
-                        <el-table-column label="位置" width="120">
-                          <template #default="scope">
-                          <el-button 
-                            size="small" 
-                            type="primary" 
-                            @click="showBoundingBox(scope.row.bbox, '其他')">
-                              <el-icon><location /></el-icon>
-                              查看位置
-                            </el-button>
-                          </template>
-                        </el-table-column>
-                      </el-table>
-                    </el-tab-pane>
-                  </el-tabs>
-                </div>
-                
-                <!-- 检测结果统计 -->
-                <div v-if="detectionResult?.data?.class_counts" class="detection-summary-section">
-                  <h3>检测结果统计</h3>
-                  <el-row :gutter="10" class="summary-grid">
-                    <el-col v-for="(category, categoryName) in detectionResult.data.class_counts" :key="categoryName" 
-                           :xs="12" :sm="8" :md="6" :lg="4">
-                      <el-card shadow="hover" class="summary-card">
-                        <div class="summary-item">
-                          <span class="summary-category">{{ categoryName }}</span>
-                          <span class="summary-count">{{ category.count }}个</span>
-                          <div class="summary-items">
-                            {{ category.items.join('、') }}
-                          </div>
-                        </div>
-                      </el-card>
-                    </el-col>
-                  </el-row>
-                </div>
+        <div class="rules-section" v-if="detectionResult?.data?.rules_check_results?.length">
+          <h4 class="section-label">规范检查</h4>
+          <RulesCheckResult :results="detectionResult.data.rules_check_results" />
+        </div>
+      </aside>
+    </div>
 
-              <!-- 规则检查结果放在最下方 -->
-              <div v-if="detectionResult?.data?.rules_check_results" class="rules-check-section">
-                <h3>规则检查结果</h3>
-                <rules-check-result :results="detectionResult.data.rules_check_results" />
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </el-main>
-      </el-container>
+    <div class="upload-hero" v-else>
+      <div class="hero-icon">
+        <svg viewBox="0 0 80 80" fill="none" width="80" height="80">
+          <rect x="8" y="20" width="64" height="50" rx="6" stroke="#c7d2fe" stroke-width="2" fill="#eef2ff"/>
+          <path d="M8 54l16-16 12 12 16-16 20 14" stroke="#818cf8" stroke-width="2" fill="none"/>
+          <circle cx="30" cy="34" r="4" fill="#6366f1"/>
+        </svg>
+      </div>
+      <h2 class="hero-title">拖放图片或点击下方按钮开始</h2>
+      <p class="hero-desc">支持 JPG、PNG、BMP 格式，可批量导入文件夹</p>
+      <label class="hero-btn">
+        <el-icon :size="20"><FolderAdd /></el-icon>
+        <span>选择图片文件夹</span>
+        <input type="file" ref="folderInput2" @change="handleFolderSelect" webkitdirectory directory hidden />
+      </label>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watchEffect, onMounted, onUnmounted, nextTick } from 'vue'
-import type { ElTree } from 'element-plus'
-import type { AxiosError } from 'axios'
-import { 
-  FolderAdd, 
-  Document, 
-  Folder, 
-  VideoPlay, 
-  Download, 
-  Delete, 
-  Picture as PictureIcon, 
-  PictureFilled, 
-  Location, 
-  Loading,
-  ArrowLeft,
-  ArrowRight,
-  Search
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import {
+  FolderAdd, Document, VideoPlay, Download, Delete,
+  Picture, PictureFilled, ArrowLeft, ArrowRight
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
-import LoadingStatus from './LoadingStatus.vue'
-import RulesCheckResult from './RulesCheckResult.vue'
-import { debounce } from 'lodash-es'
-import type { UploadFile } from 'element-plus'
 
-interface FileNode {
-  name: string
-  path: string
-  type: 'file' | 'directory'
-  children?: FileNode[]
-  raw?: File
-}
-
-interface DetectionItem {
-  class: string
-  confidence: number
-  bbox: number[]
-  category?: string
-}
-
-interface CategoryDetections {
-  [category: string]: DetectionItem[]
-}
-
-interface DetectionResultData {
-  original_image?: string
-  detected_image?: string
-  detections?: DetectionItem[]
-  categorized_detections?: CategoryDetections
-  class_summary?: Array<{class: string, count: number}>
-  rules_check_results?: any[]
-  rules_json_path?: string
-}
-
-interface ApiError {
-  response?: {
-    status: number
-    data: {
-      error?: string
-    }
-  }
-  request?: any
-  message: string
-}
-
-interface DetectionResult {
-  success: boolean
-  data: {
-    detections: Array<{
-      class: string
-      confidence: number
-      bbox: number[]
-      category: string
-    }>
-    detected_image: string
-    rules_check_results: any[]
-    [key: string]: any
-  }
-}
-
-interface DetectionResponse {
-  success: boolean
-  data: DetectionResult['data']
-  error?: string
-}
-
-// UI 相关的状态变量
-const selectedBbox = ref<number[] | null>(null)
-const imageContainer = ref<HTMLElement | null>(null)
-const detectedImageRef = ref<any>(null)
-const imageLoaded = ref(false)
-const fileTree = ref<InstanceType<typeof ElTree> | null>(null)
 const folderInput = ref<HTMLInputElement | null>(null)
+const folderInput2 = ref<HTMLInputElement | null>(null)
+
+interface FileNode { name: string; path: string; type: 'file' | 'directory'; children?: FileNode[]; raw?: File }
+interface DetectionItem { class: string; confidence: number; bbox: number[]; category: string }
+
 const fileTreeData = ref<FileNode[]>([])
 const imageFiles = ref<FileNode[]>([])
 const currentImageIndex = ref(-1)
-const isModelReady = ref(true)  // 修改为默认就绪状态
-
-// 检测相关的状态变量
-const currentFile = ref<UploadFile | null>(null)
+const currentFile = ref<any>(null)
 const detecting = ref(false)
 const processingTime = ref(0)
-const detectionResult = ref<DetectionResult | null>(null)
-const originalImage = ref<string>('')
-const detectedImage = ref<string>('')
-const detectionData = ref<DetectionResult['data']['detections']>([])
-const rulesCheckResults = ref<any[]>([])
+const detectionResult = ref<any>(null)
+const detectionData = ref<DetectionItem[]>([])
+const originalImage = ref('')
+const detectedImage = ref('')
+const viewMode = ref<'compare' | 'result'>('compare')
 
-// 模型选择相关
-const availableModels = ref<ModelInfo[]>([])
-const selectedModel = ref<string | null>(null)
-
-// 在ref声明部分添加activeTabName变量
-const activeTabName = ref('machinery')
-
-// 在ref声明部分添加变量
-const currentBboxColor = ref('#FF4500') // 默认颜色
-
-// 为不同类别定义边界框颜色
-const categoryColors: Record<string, string> = {
-  '施工机械': '#FF4500',          // 橙红色
-  '临时设施-生活及办公区': '#4CAF50', // 绿色
-  '临时设施-生产加工区': '#2196F3', // 蓝色
-  '临时设施-辅助设施': '#9C27B0',  // 紫色
-  '基础设施': '#FFC107',         // 琥珀色
-  '其他': '#607D8B'             // 蓝灰色
-}
-
-// 在ref声明部分添加
-// 移除定时查询相关变量
-const MODEL_STATUS_CACHE_DURATION = 30000 // 30秒缓存
-
-// 在ref声明部分添加
-const virtualScrollEnabled = ref(true)
-const itemHeight = ref(50)
-const visibleItems = ref(10)
-const scrollTop = ref(0)
-
-// 添加计算属性
-const totalHeight = computed(() => {
-  if (!detectionResult.value?.data?.categorized_detections) return 0
-  return Object.values(detectionResult.value.data.categorized_detections)
-    .reduce((acc, items) => acc + items.length, 0) * itemHeight.value
-})
-
-const visibleRange = computed(() => {
-  const start = Math.floor(scrollTop.value / itemHeight.value)
-  const end = Math.min(start + visibleItems.value, Math.ceil(totalHeight.value / itemHeight.value))
-  return { start, end }
-})
-
-// 添加滚动处理函数
-const handleScroll = (event: Event) => {
-  const target = event.target as HTMLElement
-  scrollTop.value = target.scrollTop
-}
-
-// 优化图片加载
-const loadImage = (src: string) => {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = reject
-    img.src = src
-  })
-}
-
-// 修改边界框位置更新函数
-const updateBBoxPosition = debounce(() => {
-  if (!selectedBbox.value || !imageContainer.value || !detectedImageRef.value) return
-  
-  const container = imageContainer.value
-  const image = detectedImageRef.value.$el.querySelector('img')
-  if (!image) return
-  
-  const containerRect = container.getBoundingClientRect()
-  const imageRect = image.getBoundingClientRect()
-  
-  // 计算图片在容器中的实际显示尺寸和位置
-  const scaleX = imageRect.width / 100 // 假设原始图片宽度为100
-  const scaleY = imageRect.height / 100 // 假设原始图片高度为100
-  
-  // 计算边界框在图片中的相对位置
-  const left = selectedBbox.value[0] * scaleX
-  const top = selectedBbox.value[1] * scaleY
-  const width = (selectedBbox.value[2] - selectedBbox.value[0]) * scaleX
-  const height = (selectedBbox.value[3] - selectedBbox.value[1]) * scaleY
-  
-  // 更新边界框位置
-  bboxLeft.value = `${left}px`
-  bboxTop.value = `${top}px`
-  bboxWidth.value = `${width}px`
-  bboxHeight.value = `${height}px`
-}, 100)
-
-// 修改图片加载处理函数
-const handleImageLoad = () => {
-  imageLoaded.value = true
-  if (selectedBbox.value) {
-    nextTick(() => {
-      updateBBoxPosition()
-    })
-  }
-}
-
-// 优化类别切换
-const handleCategoryChange = (category: string) => {
-  activeTabName.value = category
-  // 重置滚动位置
-  scrollTop.value = 0
-}
-
-// 优化检测结果处理
-const processDetectionResult = debounce((result: any) => {
-  if (!result?.data) return
-  
-  detectionResult.value = result
-  // 触发虚拟滚动更新
-  nextTick(() => {
-    updateVirtualScroll()
-  })
-}, 100)
-
-// 更新虚拟滚动
-const updateVirtualScroll = () => {
-  if (!virtualScrollEnabled.value) return
-  
-  const { start, end } = visibleRange.value
-  // 更新可见数据
-  // ... 实现虚拟滚动逻辑
-}
-
-// 优化组件卸载
-onUnmounted(() => {
-  window.removeEventListener('resize', updateBBoxPosition)
-  if (modelStatusCheckInterval.value !== null) {
-    clearInterval(modelStatusCheckInterval.value)
-  }
-  // 清理图片资源
-  if (originalImage.value) {
-    URL.revokeObjectURL(originalImage.value)
-  }
-  if (detectedImage.value) {
-    URL.revokeObjectURL(detectedImage.value)
-  }
-})
-
-// 添加计算属性
 const hasPreviousImage = computed(() => currentImageIndex.value > 0)
 const hasNextImage = computed(() => currentImageIndex.value < imageFiles.value.length - 1)
 
-// 修改 showPreviousImage 和 showNextImage 函数
-const showPreviousImage = () => {
-  if (hasPreviousImage.value) {
-    currentImageIndex.value--
-    const file = imageFiles.value[currentImageIndex.value]
-    if (file) {
-      handleFileSelect(file)
-    }
-  }
+const categoryColors: Record<string, string> = {
+  '垂直运输机械': '#ef4444',
+  '施工机械': '#f97316',
+  '临时设施-生活及办公区': '#22c55e',
+  '临时设施-生产加工区': '#3b82f6',
+  '临时设施-辅助设施': '#a855f7',
+  '基础设施': '#eab308',
+  '其他': '#64748b',
 }
 
-const showNextImage = () => {
-  if (hasNextImage.value) {
-    currentImageIndex.value++
-    const file = imageFiles.value[currentImageIndex.value]
-    if (file) {
-      handleFileSelect(file)
-    }
-  }
-}
-
-// 修改 handleFileSelect 函数
-const handleFileSelect = async (data: FileNode) => {
-  if (data.type === 'file' && data.raw) {
-    // 创建一个新的 File 对象，添加 uid 属性
-    const rawFile = new File([data.raw], data.raw.name, {
-      type: data.raw.type,
-      lastModified: data.raw.lastModified
-    }) as any
-    rawFile.uid = Date.now()
-
-    // 创建符合 UploadFile 接口的对象
-    const uploadFile: UploadFile = {
-      name: data.name,
-      raw: rawFile,
-      uid: rawFile.uid,
-      status: 'success'
-    }
-    currentFile.value = uploadFile
-    currentImageIndex.value = imageFiles.value.findIndex(file => file.path === data.path)
-    
-    // 更新文件树选中状态
-    if (fileTree.value) {
-      fileTree.value.setCurrentKey(data.path)
-    }
-    
-    try {
-      clearResults()  // 清除之前的结果
-      originalImage.value = URL.createObjectURL(data.raw)
-      await handleDetect()
-    } catch (error) {
-      console.error('Failed to process image:', error)
-      ElMessage.error('图片处理失败')
-    }
-  }
-}
-
-// 修改 handleFolderSelect 函数
-const handleFolderSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  if (!target) return
-
-  const files = Array.from(target.files || [])
-  const imageFilesList = files.filter(file => isImageFile(file.name))
-  
-  if (imageFilesList.length === 0) {
-    ElMessage.warning('未找到支持的图片文件')
-    return
-  }
-
-  const tree = buildFileTree(imageFilesList)
-  fileTreeData.value = tree
-  imageFiles.value = getAllImageFiles(tree)
-  currentImageIndex.value = -1
-  currentFile.value = null
-  
-  // 清除文件树选中状态
-  if (fileTree.value) {
-    fileTree.value.setCurrentKey('')
-  }
-  
-  ElMessage.success(`已找到 ${imageFilesList.length} 个图片文件`)
-  
-  target.value = ''
-}
-
-const downloadResults = () => {
-  ElMessageBox.confirm(
-    '请选择导出方式',
-    '导出结果',
-    {
-      confirmButtonText: '导出图片',
-      cancelButtonText: '导出JSON',
-      distinguishCancelAndClose: true,
-      type: 'info',
-    }
-  )
-    .then(() => {
-      downloadImageResult()
-    })
-    .catch(action => {
-      if (action === 'cancel') {
-        exportAsJson()
-      }
-    })
-}
-
-const showModelNotReadyWarning = () => {
-  ElMessageBox.confirm(
-    '模型正在加载中，您确定要尝试检测吗？如果模型尚未准备好，检测可能会失败。',
-    '模型未就绪提示',
-    {
-      confirmButtonText: '继续检测',
-      cancelButtonText: '等待模型就绪',
-      type: 'warning',
-    }
-  ).then(() => {
-    handleDetect()
-  }).catch(() => {
-    ElMessage.info('已取消检测，请等待模型就绪')
-  })
-}
-
-const triggerFolderSelect = () => {
-  if (folderInput.value) {
-    folderInput.value.click()
-  }
-}
-
-const filterNode = (value: string, data: FileNode) => {
-  if (!value) return true
-  return data.name.toLowerCase().includes(value.toLowerCase())
-}
-
-const exportAsJson = () => {
-  if (!detectionResult.value) return
-  
-  const dataStr = JSON.stringify(detectionResult.value, null, 2)
-  const blob = new Blob([dataStr], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `detection_result_${new Date().toISOString()}.json`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
-
-const downloadImageResult = () => {
-  if (!detectedImage.value) return
-  
-  const link = document.createElement('a')
-  link.href = detectedImage.value
-  link.download = `detection_result_${new Date().toISOString()}.png`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-}
-
-const getCategoryItems = (category: string): DetectionItem[] => {
-  if (!detectionResult.value?.data?.categorized_detections) return []
-  const items = detectionResult.value.data.categorized_detections[category] as DetectionItem[] | undefined
-  return items ? items.map(item => ({
-    class: item.class,
-    confidence: item.confidence,
-    bbox: item.bbox,
-    category: category
-  })) : []
-}
-
-const tableRowClassName = ({ row }: { row: DetectionItem }) => {
-  const category = Object.entries(detectionResult.value?.data?.categorized_detections || {})
-    .find(([_, items]) => items.includes(row))?.[0]
-  
-  if (!category) return ''
-  
-  switch (category) {
-    case '施工机械': return 'machinery-row'
-    case '临时设施-生活及办公区': return 'living-row'
-    case '临时设施-生产加工区': return 'production-row'
-    case '临时设施-辅助设施': return 'auxiliary-row'
-    case '基础设施': return 'infrastructure-row'
-    case '其他': return 'others-row'
-    default: return ''
-  }
-}
-
-const showBoundingBox = (bbox: number[], category: string) => {
-  selectedBbox.value = bbox
-  currentBboxColor.value = categoryColors[category] || '#FF4500'
-  
-  if (imageLoaded.value) {
-    updateBBoxPosition()
-  }
-}
-
-// 添加辅助函数
-const supportedImageTypes = ['.jpg', '.jpeg', '.png', '.bmp', '.webp']
-
-const isImageFile = (filename: string): boolean => {
-  return supportedImageTypes.some(ext => filename.toLowerCase().endsWith(ext))
-}
+const isImageFile = (name: string) => /\.(jpg|jpeg|png|bmp|webp)$/i.test(name)
 
 const buildFileTree = (files: File[]): FileNode[] => {
   const tree: FileNode[] = []
   const map = new Map<string, FileNode>()
-
   files.forEach(file => {
     const path = file.webkitRelativePath || file.name
     const parts = path.split('/')
     let currentPath = ''
-    let parentNode: FileNode | null = null
-
-    parts.forEach((part, index) => {
-      currentPath = index === 0 ? part : `${currentPath}/${part}`
-      
-      if (index === parts.length - 1) {
-        // 文件节点
-        const fileNode: FileNode = {
-          name: part,
-          path: currentPath,
-          type: 'file',
-          raw: file
-        }
-        map.set(currentPath, fileNode)
-        
-        if (parentNode) {
-          if (!parentNode.children) {
-            parentNode.children = []
-          }
-          parentNode.children.push(fileNode)
-    } else {
-          tree.push(fileNode)
-        }
-    } else {
-        // 目录节点
+    let parent: FileNode | null = null
+    parts.forEach((part, idx) => {
+      currentPath = idx === 0 ? part : `${currentPath}/${part}`
+      if (idx === parts.length - 1) {
+        const node: FileNode = { name: part, path: currentPath, type: 'file', raw: file }
+        map.set(currentPath, node)
+        if (parent) { parent.children = parent.children || []; parent.children.push(node) }
+        else { tree.push(node) }
+      } else {
         let dirNode = map.get(currentPath)
         if (!dirNode) {
-          dirNode = {
-            name: part,
-            path: currentPath,
-            type: 'directory',
-            children: []
-          }
+          dirNode = { name: part, path: currentPath, type: 'directory', children: [] }
           map.set(currentPath, dirNode)
-          
-          if (parentNode) {
-            if (!parentNode.children) {
-              parentNode.children = []
-            }
-            parentNode.children.push(dirNode)
-  } else {
-            tree.push(dirNode)
-          }
+          if (parent) { parent.children = parent.children || []; parent.children.push(dirNode) }
+          else { tree.push(dirNode) }
         }
-        parentNode = dirNode
+        parent = dirNode
       }
     })
   })
-
   return tree
 }
 
 const getAllImageFiles = (tree: FileNode[]): FileNode[] => {
   const files: FileNode[] = []
-  const traverse = (nodes: FileNode[]) => {
-    nodes.forEach(node => {
-      if (node.type === 'file' && node.raw && isImageFile(node.name)) {
-        files.push(node)
-      } else if (node.children) {
-        traverse(node.children)
-      }
-    })
-  }
-  traverse(tree)
+  const walk = (nodes: FileNode[]) => nodes.forEach(n => {
+    if (n.type === 'file' && n.raw && isImageFile(n.name)) files.push(n)
+    else if (n.children) walk(n.children)
+  })
+  walk(tree)
   return files
 }
 
-// 修改模型状态检查
-const checkModelStatus = async () => {
-  try {
-    const response = await axios.get<ApiResponse>('/api/detection/model/status')
-    if (response.data.success && response.data.status) {
-      isModelReady.value = response.data.status.loaded
-    }
-  } catch (error) {
-    console.error('检查模型状态失败:', error)
-    isModelReady.value = false
+const handleFolderSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const files = Array.from(target.files || []).filter(f => isImageFile(f.name))
+  if (!files.length) { ElMessage.warning('未找到图片文件'); return }
+  const tree = buildFileTree(files)
+  fileTreeData.value = tree
+  imageFiles.value = getAllImageFiles(tree)
+  target.value = ''
+  if (imageFiles.value.length) {
+    currentImageIndex.value = 0
+    selectImage(0)
   }
+  ElMessage.success(`已加载 ${imageFiles.value.length} 张图片`)
 }
 
-// 定期检查模型状态
-// 移除定时查询启动函数
-
-// 组件挂载时启动模型状态检查
-onMounted(() => {
-  checkModelStatus()
-})
-
-// 添加模型状态相关变量
-const loadingProgress = ref(0)
-const loadingStatus = ref<'success' | 'exception' | 'warning'>('warning')
-
-// 刷新模型状态
-const refreshModelStatus = async () => {
-  try {
-    const response = await axios.get<ApiResponse>('/api/detection/model/status')
-    if (response.data.success && response.data.status) {
-      isModelReady.value = response.data.status.loaded
-      availableModels.value = Object.values(response.data.status.available_models)
-      if (response.data.status.current_model) {
-        selectedModel.value = response.data.status.current_model
-      }
-    }
-  } catch (error) {
-    console.error('刷新模型状态失败:', error)
-    ElMessage.error('刷新模型状态失败')
-  }
+const selectImage = async (idx: number) => {
+  if (idx < 0 || idx >= imageFiles.value.length) return
+  currentImageIndex.value = idx
+  clearResults()
+  const fileNode = imageFiles.value[idx]
+  if (!fileNode.raw) return
+  const rawFile = new File([fileNode.raw], fileNode.raw.name, { type: fileNode.raw.type, lastModified: fileNode.raw.lastModified }) as any
+  rawFile.uid = Date.now()
+  currentFile.value = { name: fileNode.name, raw: rawFile, uid: rawFile.uid, status: 'success' }
+  originalImage.value = URL.createObjectURL(fileNode.raw)
+  await nextTick()
+  await handleDetect()
 }
 
-// 添加handleDetect函数
+const showPreviousImage = () => { if (hasPreviousImage.value) selectImage(currentImageIndex.value - 1) }
+const showNextImage = () => { if (hasNextImage.value) selectImage(currentImageIndex.value + 1) }
+
 const handleDetect = async () => {
-  if (!currentFile.value) {
-    ElMessage.warning('请先选择图片')
-    return
-  }
-
+  if (!currentFile.value) { ElMessage.warning('请先选择图片'); return }
+  detecting.value = true
+  const startTime = Date.now()
   try {
-    detecting.value = true
-    const startTime = Date.now()
     const formData = new FormData()
     formData.append('file', currentFile.value.raw)
-
-    const response = await axios.post('/api/detection/detect', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
-
+    const response = await axios.post('/api/detection/detect', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
     if (response.data.success) {
-      const endTime = Date.now()
-      processingTime.value = endTime - startTime
+      processingTime.value = Date.now() - startTime
       detectionResult.value = response.data
       detectionData.value = response.data.data.detections
       detectedImage.value = `data:image/png;base64,${response.data.data.detected_image}`
-      
-      // 处理分类检测结果
-      const categorizedDetections = {}
-      response.data.data.detections.forEach(detection => {
-        if (!categorizedDetections[detection.category]) {
-          categorizedDetections[detection.category] = []
-        }
-        categorizedDetections[detection.category].push(detection)
+      const categorized: any = {}
+      response.data.data.detections.forEach((d: any) => {
+        if (!categorized[d.category]) categorized[d.category] = []
+        categorized[d.category].push(d)
       })
-      detectionResult.value.data.categorized_detections = categorizedDetections
-      
-      // 发送规则检查请求
+      detectionResult.value.data.categorized_detections = categorized
       try {
-        const rulesResponse = await axios.post('/api/check-rules', {
-          detections: response.data.data.detections
-        })
-        
-        if (rulesResponse.data.success) {
-          detectionResult.value.data.rules_check_results = rulesResponse.data.results
-          ElMessage.success('检测和规则检查完成')
-        } else {
-          ElMessage.warning('检测完成，但规则检查失败: ' + (rulesResponse.data.error || '未知错误'))
-        }
-      } catch (rulesError) {
-        console.error('规则检查失败:', rulesError)
-        ElMessage.warning('检测完成，但规则检查失败')
-      }
+        const rulesRes = await axios.post('/api/check-rules', { detections: response.data.data.detections })
+        if (rulesRes.data.success) detectionResult.value.data.rules_check_results = rulesRes.data.results
+      } catch {}
+      ElMessage.success(`检测完成，发现 ${detectionData.value.length} 个目标`)
     } else {
-      ElMessage.error(response.data.error || '检测失败')
+      ElMessage.error(response.data.error || response.data.data?.message || '检测失败')
     }
-  } catch (error: any) {
-    console.error('检测失败:', error)
-    const errorMsg = error.response?.data?.error || error.response?.data?.data?.message || error.message || '检测失败，请重试'
-    ElMessage.error(errorMsg)
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.response?.data?.data?.message || err.message || '检测失败')
   } finally {
     detecting.value = false
   }
 }
 
-const loading = ref(false)
-
-// 修改handleModelChange函数
-const handleModelChange = async (modelName: string) => {
-  try {
-    loading.value = true
-    const response = await axios.post('/api/detection/model/switch', {
-      model_name: modelName
-    })
-    
-    if (response.data.success) {
-      ElMessage.success('切换模型成功')
-      await fetchModelStatus() // 重新获取模型状态
-    } else {
-      ElMessage.error(response.data.error || '切换模型失败')
-    }
-  } catch (error) {
-    console.error('切换模型失败:', error)
-    ElMessage.error('切换模型失败，请重试')
-  } finally {
-    loading.value = false
-  }
-}
-
+const highlightBbox = (bbox: number[] | null) => {}
 const clearResults = () => {
-  detectedImage.value = null
+  detectedImage.value = ''
   detectionResult.value = null
-  loadingProgress.value = 0
-  loadingStatus.value = 'warning'
-  isModelReady.value = false
+  detectionData.value = []
+  processingTime.value = 0
 }
 
-// 修改fetchModelStatus函数
-const fetchModelStatus = async () => {
-  try {
-    const response = await axios.get('/api/detection/model/status')
-    if (response.data.success && response.data.status) {
-      const status = response.data.status
-      currentModel.value = status.current_model
-      isModelReady.value = status.loaded
-      availableModels.value = Object.values(status.available_models || {})
-      lastUpdateTime.value = new Date().toLocaleString()
-    } else {
-      ElMessage.error(response.data.error || '获取模型状态失败')
-    }
-  } catch (error) {
-    console.error('获取模型状态失败:', error)
-    ElMessage.error('获取模型状态失败，请重试')
-  }
+const downloadResults = () => {
+  ElMessageBox.confirm('请选择导出方式', '导出结果', { confirmButtonText: '导出图片', cancelButtonText: '导出JSON', distinguishCancelAndClose: true, type: 'info' })
+    .then(() => {
+      if (!detectedImage.value) return
+      const a = document.createElement('a')
+      a.href = detectedImage.value
+      a.download = `result_${Date.now()}.png`
+      a.click()
+      ElMessage.success('图片已导出')
+    })
+    .catch((action: string) => {
+      if (action !== 'cancel') return
+      if (!detectionResult.value) return
+      const blob = new Blob([JSON.stringify(detectionResult.value, null, 2)], { type: 'application/json' })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `result_${Date.now()}.json`
+      a.click()
+      ElMessage.success('JSON已导出')
+    })
 }
+
+onUnmounted(() => {
+  if (originalImage.value) URL.revokeObjectURL(originalImage.value)
+})
 </script>
 
 <style scoped>
-/* 统一图片展示区域样式 */
-.image-display-area {
-  margin-top: 24px;
+.detection-panel { display: flex; flex-direction: column; gap: 16px; }
+
+.toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; background: white; border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
 
-.loading-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--el-text-color-secondary);
+.toolbar-left { display: flex; align-items: center; gap: 16px; }
+
+.upload-trigger {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; background: #6366f1; color: white; border-radius: 8px;
+  font-size: 14px; font-weight: 500; cursor: pointer; transition: background .2s;
+}
+.upload-trigger:hover { background: #4f46e5; }
+
+.file-count { font-size: 13px; color: #64748b; }
+
+.toolbar-right { display: flex; align-items: center; gap: 12px; }
+
+.workspace { display: flex; gap: 16px; min-height: calc(100vh - 200px); }
+
+.viewer-area { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.viewer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  background: white; border-radius: 10px; padding: 8px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
 
-.loading-animation {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
+.viewer-tabs { display: flex; gap: 4px; }
+.viewer-tabs button {
+  padding: 6px 14px; border: none; background: transparent; border-radius: 6px;
+  font-size: 13px; color: #64748b; cursor: pointer; transition: all .15s;
+}
+.viewer-tabs button.active { background: #eef2ff; color: #4f46e5; font-weight: 600; }
+
+.viewer-info { display: flex; align-items: center; gap: 16px; }
+.filename { font-size: 13px; color: #334155; font-weight: 500; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detect-time { font-size: 12px; color: #94a3b8; }
+
+.image-stage { display: flex; gap: 12px; flex: 1; min-height: 400px; }
+
+.image-panel {
+  background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.image-panel.half { flex: 1; }
+.image-panel.full { flex: 1; }
+.image-panel.hidden { display: none; }
+
+.image-label {
+  padding: 10px 16px; font-size: 13px; font-weight: 600; color: #475569;
+  border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.result-panel .image-label { color: #059669; }
+.badge { font-size: 11px; background: #d1fae5; color: #059669; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+
+.image-wrapper {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  background: #f8fafc; position: relative; overflow: hidden; padding: 16px;
+}
+.preview-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  color: #94a3b8; font-size: 14px;
 }
 
-.loading-icon {
-  font-size: 32px;
-  animation: spin 2s linear infinite;
+.loading-overlay {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  color: #6366f1; font-size: 14px; font-weight: 500;
+}
+.spinner {
+  width: 36px; height: 36px; border: 3px solid #e0e7ff;
+  border-top-color: #6366f1; border-radius: 50%; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.filmstrip {
+  display: flex; gap: 6px; overflow-x: auto; padding: 8px 4px;
+  background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.filmstrip-item {
+  padding: 6px 12px; white-space: nowrap; font-size: 12px; color: #64748b;
+  border-radius: 6px; cursor: pointer; transition: all .15s; border: 1px solid transparent;
+}
+.filmstrip-item:hover { background: #f1f5f9; }
+.filmstrip-item.active { background: #eef2ff; color: #4f46e5; border-color: #c7d2fe; font-weight: 600; }
+.filmstrip-name { max-width: 120px; display: inline-block; overflow: hidden; text-overflow: ellipsis; }
+
+.sidebar {
+  width: 320px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px;
 }
 
-.loading-text {
-  font-size: 16px;
-  display: flex;
-  align-items: center;
+.action-card {
+  background: white; border-radius: 12px; padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06); display: flex; flex-direction: column; gap: 10px;
+}
+.detect-btn { width: 100%; height: 44px; font-size: 15px; font-weight: 600; }
+.export-btn { width: 100%; }
+
+.section-label {
+  font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase;
+  letter-spacing: 0.8px; margin-bottom: 8px;
 }
 
-.dots {
-  display: inline-block;
-  animation: dots 1.5s infinite;
-  width: 24px;
+.stats-grid {
+  background: white; border-radius: 12px; padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.stat-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 0;
+  font-size: 13px; color: #334155;
+}
+.stat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.stat-name { flex: 1; }
+.stat-num { font-weight: 700; color: #1e293b; }
+
+.detection-list {
+  background: white; border-radius: 12px; padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06); max-height: 300px; overflow-y: auto;
+}
+.detection-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background .15s;
+}
+.detection-item:last-child { border-bottom: none; }
+.detection-item:hover { background: #f8fafc; border-radius: 6px; padding-left: 6px; padding-right: 6px; }
+.item-color { width: 4px; height: 28px; border-radius: 2px; flex-shrink: 0; }
+.item-info { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.item-class { font-size: 13px; font-weight: 600; color: #1e293b; }
+.item-category { font-size: 11px; color: #94a3b8; }
+.item-confidence {
+  font-size: 12px; font-weight: 700; color: #6366f1;
+  background: #eef2ff; padding: 2px 8px; border-radius: 6px;
 }
 
-.progress-bar {
-  width: 200px;
-  height: 4px;
-  background: var(--el-border-color-lighter);
-  border-radius: 2px;
-  overflow: hidden;
+.rules-section {
+  background: white; border-radius: 12px; padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
+.rules-section :deep(.rules-card) { box-shadow: none; border: none; }
+.rules-section :deep(.el-card__header) { padding: 0 0 8px; border-bottom: none; }
 
-.progress-inner {
-  width: 40%;
-  height: 100%;
-  background: var(--el-color-primary);
-  border-radius: 2px;
-  animation: progress 1.5s ease-in-out infinite;
+.upload-hero {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: calc(100vh - 160px); text-align: center; gap: 16px;
 }
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.hero-icon { margin-bottom: 4px; }
+.hero-title { font-size: 20px; font-weight: 700; color: #1e293b; }
+.hero-desc { font-size: 14px; color: #94a3b8; }
+.hero-btn {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 8px;
+  padding: 14px 32px; background: #6366f1; color: white; border-radius: 10px;
+  font-size: 15px; font-weight: 600; cursor: pointer; transition: all .2s;
+  box-shadow: 0 4px 14px rgba(99,102,241,.35);
 }
-
-@keyframes dots {
-  0%, 20% { content: '.'; }
-  40% { content: '..'; }
-  60% { content: '...'; }
-  80%, 100% { content: ''; }
-}
-
-@keyframes progress {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(350%); }
-}
-
-.image-card {
-  height: 600px; /* 统一卡片高度 */
-  display: flex;
-  flex-direction: column;
-}
-
-.image-container {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  position: relative;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  height: 500px; /* 统一容器高度 */
-  margin: 0;
-  padding: 0;
-}
-
-.detected-image-wrapper {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.display-image {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  position: relative;
-  z-index: 1;
-}
-
-.empty-image {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #909399;
-  font-size: 14px;
-  gap: 8px;
-}
-
-.empty-image .el-icon {
-  font-size: 48px;
-}
-
-/* 确保图片容器在卡片中居中 */
-.el-card__body {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding: 20px;
-}
-
-/* 统一卡片头部样式 */
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 8px;
-}
-
-.section-title {
-  font-size: 16px;
-  font-weight: 500;
-  color: #303133;
-}
-
-.card-header .file-name {
-  margin-left: 10px;
-  color: #909399;
-  font-size: 14px;
-}
-
-/* 统一图片导航按钮样式 */
-.image-navigation {
-  display: flex;
-  gap: 8px;
-}
-
-.nav-button {
-  padding: 8px 16px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* 模型状态悬浮窗样式 */
-.model-status-float {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 1000;
-}
-
-.model-status-card {
-  width: 300px;
-  background-color: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
-}
-
-.model-status-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.status-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.status-item .label {
-  min-width: 80px;
-  color: #606266;
-}
-
-.model-info {
-  color: #909399;
-  font-size: 12px;
-  margin-left: 8px;
-}
-
-.loading-progress {
-  margin-top: 8px;
-}
-
-/* 确保悬浮窗不会影响其他内容 */
-.detection-container {
-  position: relative;
-  min-height: 100vh;
-}
+.hero-btn:hover { background: #4f46e5; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(99,102,241,.4); }
 </style>

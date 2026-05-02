@@ -1,65 +1,143 @@
 <template>
-  <div class="app-container">
-    <el-container>
-      <!-- <el-header>
-        <h1 class="main-title">海南机器管招投标项目-建筑图纸识别系统</h1>
-      </el-header> -->
-      <el-main>
-        <detection-panel />
-      </el-main>
-      <el-footer>
-        <p>© 2026 海南机器管招投标项目-建筑图纸识别系统v1.0</p>
-      </el-footer>
-    </el-container>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="brand">
+          <img src="/seu.svg" alt="SEU" class="brand-logo" />
+          <div class="brand-info">
+            <span class="brand-text">海南机器管招投标项目 2026</span>
+            <span class="brand-sub">建筑图纸分析系统</span>
+          </div>
+        </div>
+        <div class="header-status">
+          <span class="status-dot" :class="modelReady ? 'online' : 'offline'"></span>
+          <span class="status-text">{{ modelReady ? '模型就绪' : '模型加载中' }}</span>
+        </div>
+      </div>
+    </header>
+    <main class="app-main">
+      <DetectionPanel />
+    </main>
   </div>
 </template>
 
-<script>
-import { defineComponent } from 'vue'
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import DetectionPanel from './components/DetectionPanel.vue'
 
-export default defineComponent({
-  name: 'App',
-  components: {
-    DetectionPanel
-  }
+const modelReady = ref(false)
+
+onMounted(async () => {
+  try {
+    const axios = (await import('axios')).default
+    const res = await axios.get('/api/detection/model/status')
+    modelReady.value = res.data?.loaded || false
+  } catch {}
 })
 </script>
 
 <style>
-.app-container {
-  min-height: 100vh;
-  background: #f5f7fa;
-}
-
-/* .el-header {
-  background: linear-gradient(135deg, #409EFF 0%, #2c3e50 100%);
-  color: white;
-  text-align: center;
-  line-height: 60px;
-  padding: 0;
-  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
-}
-
-.main-title {
+* {
   margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: 1px;
-} */
-
-.el-main {
-  padding: 20px;
-  margin-top: 0;
-  height: calc(100vh - 60px); /* 减去footer的高度 */
+  padding: 0;
+  box-sizing: border-box;
 }
 
-.el-footer {
-  text-align: center;
-  color: #909399;
-  padding: 20px;
-  background: #ffffff;
-  box-shadow: 0 -2px 12px 0 rgba(0,0,0,0.05);
-  height: 60px;
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #f0f2f5;
+  color: #1f2937;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #3730a3 100%);
+  color: white;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 8px;
+}
+
+.brand-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand-text {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  line-height: 1.3;
+}
+
+.brand-sub {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.7;
+  letter-spacing: 0.3px;
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.online {
+  background: #34d399;
+  box-shadow: 0 0 6px #34d39980;
+}
+
+.status-dot.offline {
+  background: #fbbf24;
+  box-shadow: 0 0 6px #fbbf2480;
+}
+
+.app-main {
+  flex: 1;
+  padding: 20px 24px 32px;
+  max-width: 1440px;
+  margin: 0 auto;
+  width: 100%;
 }
 </style>

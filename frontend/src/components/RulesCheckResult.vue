@@ -1,394 +1,171 @@
 <template>
-  <div class="rules-check-container">
-    <el-card class="rules-card">
-      <template #header>
-        <div class="card-header">
-          <span class="section-title">施工规范检查结果</span>
-          <el-button type="primary" class="export-btn" @click="exportResults">
-            <el-icon><download /></el-icon>
-            导出规则检查结果
-          </el-button>
-        </div>
-      </template>
-      
-      <div v-if="!results || results.length === 0" class="empty-result">
-        <el-icon><document-checked /></el-icon>
-        <span>暂无规则检查结果</span>
+  <div class="rules-check">
+    <div class="summary-bar">
+      <div class="summary-item ok">
+        <span class="summary-num">{{ stats.compliant }}</span>
+        <span class="summary-label">合规</span>
       </div>
-      
-      <div v-else class="result-content">
-        <el-alert
-          title="规范检查总结"
-          :type="alertType"
-          :description="alertDescription"
-          :closable="false"
-          show-icon
-          class="summary-alert"
-        />
-        
-        <el-table :data="results" style="width: 100%" :row-class-name="tableRowClassName">
-          <el-table-column prop="rule_id" label="规则编号" width="100">
-            <template #default="scope">
-              {{ formatRuleId(scope.row.rule_id) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="category" label="类别" width="100" />
-          <el-table-column label="规则描述" min-width="300">
-            <template #default="scope">
-              <div class="rule-description">
-                {{ getFullRuleDescription(scope.row) }}
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="severity" label="重要程度" width="100">
-            <template #default="scope">
-              <el-tag :type="getSeverityType(scope.row.severity)">
-                {{ scope.row.severity }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="100">
-            <template #default="scope">
-              <el-tag :type="getStatusType(scope.row.status)">
-                {{ scope.row.status }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="message" label="结果说明" min-width="200" />
-          <el-table-column label="扣分" width="100">
-            <template #default="scope">
-              <span :class="{ 'deduction-text': calculateDeduction(scope.row.severity, scope.row.status) > 0 }">
-                {{ calculateDeduction(scope.row.severity, scope.row.status) }}
-              </span>
-            </template>
-          </el-table-column>
-        </el-table>
-        
-        <div class="total-score">
-          <span class="total-label">总分：</span>
-          <span class="total-value">{{ totalScore }}</span>
+      <div class="summary-item warn">
+        <span class="summary-num">{{ stats.nonCompliant }}</span>
+        <span class="summary-label">不合规</span>
+      </div>
+      <div class="summary-item info">
+        <span class="summary-num">{{ stats.undetectable }}</span>
+        <span class="summary-label">无法检测</span>
+      </div>
+    </div>
+
+    <div class="score-badge">
+      <div class="score-ring">
+        <svg viewBox="0 0 64 64" width="64" height="64">
+          <circle cx="32" cy="32" r="28" fill="none" stroke="#e2e8f0" stroke-width="5"/>
+          <circle cx="32" cy="32" r="28" fill="none" :stroke="scoreColor" stroke-width="5"
+            stroke-dasharray="175.9" :stroke-dashoffset="175.9 - (175.9 * totalScore / 100)"
+            stroke-linecap="round" transform="rotate(-90 32 32)"/>
+        </svg>
+        <span class="score-text" :style="{ color: scoreColor }">{{ totalScore }}</span>
+      </div>
+      <span class="score-label">总分</span>
+    </div>
+
+    <div class="rule-list">
+      <div v-for="(rule, idx) in results" :key="idx" class="rule-item">
+        <div class="rule-status" :class="rule.status">
+          <span v-if="rule.status === '合规'" class="status-icon ok">✓</span>
+          <span v-else-if="rule.status === '不合规'" class="status-icon warn">!</span>
+          <span v-else class="status-icon info">?</span>
+        </div>
+        <div class="rule-body">
+          <div class="rule-header">
+            <span class="rule-id">{{ formatRuleId(rule.rule_id) }}</span>
+            <el-tag :type="getSeverityType(rule.severity)" size="small" effect="dark">
+              {{ rule.severity }}
+            </el-tag>
+          </div>
+          <div class="rule-desc">{{ getFullRuleDescription(rule) }}</div>
+          <div class="rule-msg" v-if="rule.status !== '合规'">{{ rule.message }}</div>
+        </div>
+        <div class="rule-deduction" v-if="calculateDeduction(rule.severity, rule.status) > 0">
+          -{{ calculateDeduction(rule.severity, rule.status) }}
         </div>
       </div>
-    </el-card>
+    </div>
   </div>
 </template>
 
-<script setup>
-import { ref, computed } from 'vue'
-import { Document, DocumentChecked, Download } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+<script setup lang="ts">
+import { computed } from 'vue'
 
-const props = defineProps({
-  results: {
-    type: Array,
-    default: () => []
-  }
+interface RuleResult {
+  rule_id: string
+  category: string
+  description?: string
+  severity: string
+  status: string
+  message: string
+  sub_rules?: RuleResult[]
+}
+
+const props = defineProps<{ results: RuleResult[] }>()
+
+const stats = computed(() => {
+  if (!props.results?.length) return { compliant: 0, nonCompliant: 0, undetectable: 0, failed: 0 }
+  return props.results.reduce((acc, r) => {
+    if (r.status === '合规') acc.compliant++
+    else if (r.status === '不合规') acc.nonCompliant++
+    else if (r.status === '无法检测') acc.undetectable++
+    else acc.failed++
+    return acc
+  }, { compliant: 0, nonCompliant: 0, undetectable: 0, failed: 0 })
 })
 
-// 计算总分
 const totalScore = computed(() => {
-  if (!props.results || props.results.length === 0) {
-    return 100
-  }
-  
-  const totalDeduction = props.results.reduce((sum, result) => {
-    return sum + calculateDeduction(result.severity, result.status)
-  }, 0)
-  
-  return Math.max(0, 100 - totalDeduction)
+  if (!props.results?.length) return 100
+  const deduction = props.results.reduce((sum, r) => sum + calculateDeduction(r.severity, r.status), 0)
+  return Math.max(0, 100 - deduction)
 })
 
-// 统计规则检查结果
-const complianceStats = computed(() => {
-  if (!props.results || props.results.length === 0) {
-    return { compliant: 0, nonCompliant: 0, undetectable: 0, failed: 0, total: 0 }
-  }
-  
-  const stats = {
-    compliant: 0,
-    nonCompliant: 0,
-    undetectable: 0,
-    failed: 0,
-    total: props.results.length
-  }
-  
-  props.results.forEach(result => {
-    if (result.status === '合规') {
-      stats.compliant++
-    } else if (result.status === '不合规') {
-      stats.nonCompliant++
-    } else if (result.status === '无法检测') {
-      stats.undetectable++
-    } else {
-      stats.failed++
-    }
-  })
-  
-  return stats
+const scoreColor = computed(() => {
+  if (totalScore.value >= 80) return '#22c55e'
+  if (totalScore.value >= 60) return '#f59e0b'
+  return '#ef4444'
 })
 
-// 根据检查结果设置提示类型
-const alertType = computed(() => {
-  if (complianceStats.value.nonCompliant > 0) {
-    return 'warning'
-  } else if (complianceStats.value.compliant > 0 && complianceStats.value.nonCompliant === 0) {
-    return 'success'
-  } else {
-    return 'info'
-  }
-})
+const formatRuleId = (id: string) => id ? id.toString() : ''
 
-// 生成提示描述
-const alertDescription = computed(() => {
-  const { compliant, nonCompliant, undetectable, failed, total } = complianceStats.value
-  
-  if (total === 0) {
-    return '暂无规则检查结果'
+const getFullRuleDescription = (rule: RuleResult) => {
+  let desc = rule.description || ''
+  if (rule.sub_rules?.length) {
+    desc += ' | ' + rule.sub_rules.map(sr => sr.description).join('; ')
   }
-  
-  return `总共检查了 ${total} 条规则，其中 ${compliant} 条合规，${nonCompliant} 条不合规，${undetectable} 条无法自动检测，${failed} 条检查失败。`
-})
-
-// 根据状态获取行样式
-const tableRowClassName = ({ row }) => {
-  if (row.status === '不合规') {
-    return 'warning-row'
-  } else if (row.status === '合规') {
-    return 'success-row'
-  }
-  return ''
+  return desc
 }
 
-// 根据严重程度获取标签类型
-const getSeverityType = (severity) => {
-  switch (severity) {
-    case '严重':
-      return 'danger'
-    case '重要':
-      return 'warning'
-    case '一般':
-      return 'info'
-    default:
-      return ''
-  }
+const getSeverityType = (s: string): 'danger' | 'warning' | 'info' => {
+  if (s === '严重') return 'danger'
+  if (s === '重要') return 'warning'
+  return 'info'
 }
 
-// 根据状态获取标签类型
-const getStatusType = (status) => {
-  switch (status) {
-    case '合规':
-      return 'success'
-    case '不合规':
-      return 'danger'
-    case '无法检测':
-      return 'info'
-    case '检查失败':
-      return 'warning'
-    default:
-      return ''
-  }
-}
-
-// 格式化规则编号
-const formatRuleId = (ruleId) => {
-  if (!ruleId) return ''
-  
-  // 将规则编号转换为标准格式
-  // 例如：1.5.1.1 -> 1.5.1.1
-  // 例如：1.5.1 -> 1.5.1
-  return ruleId.toString()
-}
-
-// 获取完整的规则描述
-const getFullRuleDescription = (rule) => {
-  if (!rule) return ''
-  
-  // 构建完整的规则描述
-  let description = ''
-  
-  // 添加主规则编号和描述
-  if (rule.rule_id) {
-    description += `${formatRuleId(rule.rule_id)} `
-  }
-  
-  // 添加规则描述
-  if (rule.description) {
-    description += rule.description
-  }
-  
-  // 添加子规则（如果有）
-  if (rule.sub_rules && rule.sub_rules.length > 0) {
-    rule.sub_rules.forEach((subRule, index) => {
-      description += `\n${formatRuleId(subRule.rule_id)} ${subRule.description}`
-    })
-  }
-  
-  return description
-}
-
-// 根据严重程度和状态计算扣分
-const calculateDeduction = (severity, status) => {
-  if (status !== '不合规') {
-    return 0
-  }
-  
-  switch (severity) {
-    case '严重':
-      return 10
-    case '重要':
-      return 5
-    case '一般':
-      return 2
-    default:
-      return 0
-  }
-}
-
-// 导出结果
-const exportResults = () => {
-  if (!props.results || props.results.length === 0) {
-    ElMessage.warning('暂无规则检查结果可导出')
-    return
-  }
-  
-  try {
-    // 准备CSV内容
-    const headers = ['规则编号', '类别', '规则描述', '重要程度', '状态', '扣分', '结果说明']
-    let csvContent = headers.join(',') + '\n'
-    
-    props.results.forEach(result => {
-      const deduction = calculateDeduction(result.severity, result.status)
-      const row = [
-        formatRuleId(result.rule_id),
-        result.category,
-        `"${getFullRuleDescription(result).replace(/"/g, '""')}"`,
-        result.severity,
-        result.status,
-        deduction,
-        `"${result.message.replace(/"/g, '""')}"`
-      ]
-      csvContent += row.join(',') + '\n'
-    })
-    
-    // 添加总分行
-    const totalDeduction = props.results.reduce((sum, result) => {
-      return sum + calculateDeduction(result.severity, result.status)
-    }, 0)
-    const totalScore = Math.max(0, 100 - totalDeduction)
-    csvContent += `总分,${totalScore}\n`
-    
-    // 创建Blob并下载
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    
-    link.setAttribute('href', url)
-    link.setAttribute('download', `规范检查结果_${new Date().toISOString().slice(0, 10)}.csv`)
-    link.style.visibility = 'hidden'
-    
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    
-    ElMessage.success('规则检查结果导出成功')
-  } catch (error) {
-    console.error('导出结果失败:', error)
-    ElMessage.error('导出失败，请重试')
-  }
+const calculateDeduction = (severity: string, status: string) => {
+  if (status !== '不合规') return 0
+  if (severity === '严重') return 10
+  if (severity === '重要') return 5
+  return 2
 }
 </script>
 
 <style scoped>
-.rules-check-container {
-  margin-top: 24px;
-}
+.rules-check { display: flex; flex-direction: column; gap: 12px; }
 
-.rules-card {
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
+.summary-bar {
+  display: flex; gap: 8px;
 }
+.summary-item {
+  flex: 1; text-align: center; padding: 8px 4px; border-radius: 8px;
+}
+.summary-item.ok { background: #f0fdf4; }
+.summary-item.warn { background: #fef2f2; }
+.summary-item.info { background: #f0f9ff; }
+.summary-num { font-size: 20px; font-weight: 700; display: block; }
+.summary-item.ok .summary-num { color: #16a34a; }
+.summary-item.warn .summary-num { color: #dc2626; }
+.summary-item.info .summary-num { color: #2563eb; }
+.summary-label { font-size: 11px; color: #64748b; }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.score-badge {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
 }
+.score-ring { position: relative; display: flex; align-items: center; justify-content: center; }
+.score-text {
+  position: absolute; font-size: 18px; font-weight: 800;
+}
+.score-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
 
-.section-title {
-  font-size: 18px;
-  font-weight: 500;
-  color: #303133;
+.rule-list { display: flex; flex-direction: column; gap: 1px; }
+.rule-item {
+  display: flex; gap: 10px; padding: 10px; border-radius: 6px;
+  background: #f8fafc; transition: background .15s;
 }
+.rule-item:hover { background: #f1f5f9; }
 
-.empty-result {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 0;
-  color: #909399;
+.rule-status { flex-shrink: 0; }
+.status-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 700;
 }
+.status-icon.ok { background: #dcfce7; color: #16a34a; }
+.status-icon.warn { background: #fee2e2; color: #dc2626; }
+.status-icon.info { background: #dbeafe; color: #2563eb; }
 
-.empty-result .el-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
+.rule-body { flex: 1; min-width: 0; }
+.rule-header { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.rule-id { font-size: 11px; font-weight: 700; color: #64748b; font-family: monospace; }
+.rule-desc { font-size: 12px; color: #334155; line-height: 1.5; }
+.rule-msg { font-size: 11px; color: #dc2626; margin-top: 2px; }
 
-.result-content {
-  padding: 16px 0;
+.rule-deduction {
+  font-size: 14px; font-weight: 700; color: #dc2626; flex-shrink: 0;
+  align-self: center;
 }
-
-.summary-alert {
-  margin-bottom: 20px;
-}
-
-:deep(.el-table .warning-row) {
-  background: #fef8e8;
-}
-
-:deep(.el-table .success-row) {
-  background: #f0f9eb;
-}
-
-.export-btn {
-  display: flex;
-  align-items: center;
-}
-
-.export-btn .el-icon {
-  margin-right: 4px;
-}
-
-.deduction-text {
-  color: #f56c6c;
-  font-weight: bold;
-}
-
-.total-score {
-  margin-top: 20px;
-  padding: 16px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  text-align: right;
-}
-
-.total-label {
-  font-size: 16px;
-  font-weight: 500;
-  color: #606266;
-  margin-right: 8px;
-}
-
-.total-value {
-  font-size: 20px;
-  font-weight: bold;
-  color: #409eff;
-}
-
-.rule-description {
-  white-space: pre-line;
-  line-height: 1.5;
-  font-size: 14px;
-  color: #606266;
-}
-</style> 
+</style>
