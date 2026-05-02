@@ -137,9 +137,12 @@ CLASS_MAPPING = {
 
 def analyze_image_with_siliconflow(image_base64):
     """使用硅基流动API分析图片"""
+    import random
+    api_keys = Config.SILICONFLOW_API_KEY_LIST
+    api_key = random.choice(api_keys) if api_keys else ''
     try:
         headers = {
-            "Authorization": f"Bearer {Config.SILICONFLOW_API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
@@ -336,9 +339,11 @@ def process_image(image_file, model):
 def network_check():
     """网络诊断接口"""
     try:
-        # 测试硅基流动API连接
+        import random
+        api_keys = Config.SILICONFLOW_API_KEY_LIST
+        api_key = random.choice(api_keys) if api_keys else ''
         headers = {
-            "Authorization": f"Bearer {SILICONFLOW_API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
         response = requests.get(

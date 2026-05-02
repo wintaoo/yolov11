@@ -7,6 +7,9 @@ import os
 import uuid
 import threading
 import logging
+import time
+import random
+import concurrent.futures
 from datetime import datetime
 
 docx_bp = Blueprint('docx', __name__)
@@ -103,15 +106,25 @@ def analyze_batch(task_id):
         try:
             images = task['images']
             total = len(images)
-            for i, img in enumerate(images):
-                idx = str(img['index'])
-                task['batch_progress'] = i + 1
-                logger.info(f"批量分析 [{task_id}] {i+1}/{total}: {img['filename']}")
+            progress_lock = threading.Lock()
 
-                ai_result = analyze_image_with_ai(img['filepath'], img.get('context', ''))
-                task['batch_results'][idx] = ai_result
-                task_service.save_results(Config.TASKS_DIR, task_id, {idx: ai_result})
-                logger.info(f"  完成: 类型={ai_result.get('image_type', '?')}")
+            def analyze_one(img):
+                idx = str(img['index'])
+                logger.info(f"批量分析 [{task_id}] #{idx}: {img['filename']}")
+                result = analyze_image_with_ai(img['filepath'], img.get('context', ''))
+                with progress_lock:
+                    task['batch_results'][idx] = result
+                    task['batch_progress'] = task.get('batch_progress', 0) + 1
+                    task_service.save_results(Config.TASKS_DIR, task_id, {idx: result})
+                logger.info(f"  完成 #{idx}: 类型={result.get('image_type', '?')} 摘要={result.get('summary','')[:40]}... 评估={result.get('evaluation','')[:30]}...")
+                return result
+
+            max_workers = min(5, total)
+            logger.info(f"批量分析 [{task_id}] 共{total}张, 并发数={max_workers}")
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {pool.submit(analyze_one, img): img for img in images}
+                concurrent.futures.wait(futures)
 
             task['batch_status'] = 'summarizing'
             summary = generate_summary(task['batch_results'])
@@ -268,6 +281,11 @@ def generate_summary(all_results):
 
 请直接输出报告内容，不要使用JSON格式。"""
 
+    api_keys = Config.SILICONFLOW_API_KEY_LIST
+    if not api_keys:
+        return "汇总生成失败: 未配置API Key"
+    api_key = random.choice(api_keys)
+
     try:
         resp = requests.post(
             Config.SILICONFLOW_API_URL,
@@ -280,7 +298,7 @@ def generate_summary(all_results):
                 "max_tokens": 2048,
                 "temperature": 0.3,
             },
-            headers={"Authorization": f"Bearer {Config.SILICONFLOW_API_KEY}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             timeout=60,
         )
         if resp.status_code == 200:

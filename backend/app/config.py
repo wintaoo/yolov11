@@ -29,7 +29,8 @@ class Config:
     API_PREFIX = '/api'
     MAX_CONTENT_LENGTH = 200 * 1024 * 1024
 
-    SILICONFLOW_API_KEY = os.environ.get('SILICONFLOW_API_KEY', '')
+    SILICONFLOW_API_KEYS = os.environ.get('SILICONFLOW_API_KEYS', os.environ.get('SILICONFLOW_API_KEY', ''))
+    SILICONFLOW_API_KEY_LIST = [k.strip() for k in SILICONFLOW_API_KEYS.split(',') if k.strip()]
     SILICONFLOW_API_URL = os.environ.get('SILICONFLOW_API_URL', 'https://api.siliconflow.cn/v1/chat/completions')
     SILICONFLOW_VISION_MODEL = os.environ.get('SILICONFLOW_VISION_MODEL', 'zai-org/GLM-4.6V')
 
