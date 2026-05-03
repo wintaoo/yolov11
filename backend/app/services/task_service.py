@@ -108,6 +108,18 @@ def save_summary(tasks_root, task_id, summary):
         f.write(summary)
 
 
+def _safe_report_str(val):
+    """Normalize AI result value to string for report generation."""
+    if isinstance(val, dict):
+        parts = [f'{k}: {v}' for k, v in val.items()]
+        return '；'.join(parts)
+    if isinstance(val, list):
+        return '；'.join(str(v) for v in val)
+    if not isinstance(val, str):
+        return str(val)
+    return val
+
+
 def generate_analysis_report(tasks_root, task_id):
     """从 results.json 生成人类可读的 analysis_report.md"""
     d = task_dir(tasks_root, task_id)
@@ -131,11 +143,11 @@ def generate_analysis_report(tasks_root, task_id):
         lines.append(f"## 图片 #{idx}\n")
         lines.append(f"**图纸类型**: {r.get('image_type', '未分类')}\n")
 
-        summary = r.get('summary', '')
+        summary = _safe_report_str(r.get('summary', ''))
         if summary:
             lines.append(f"**AI 摘要**:\n\n> {summary}\n")
 
-        evaluation = r.get('evaluation', '')
+        evaluation = _safe_report_str(r.get('evaluation', ''))
         if evaluation:
             lines.append(f"**AI 评估**: {evaluation}\n")
 

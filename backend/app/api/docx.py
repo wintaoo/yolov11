@@ -500,96 +500,252 @@ def delete_task(task_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
+def _safe_str(val, max_len=None):
+    """Normalize AI result value to string, handling dict/list/string types."""
+    if isinstance(val, dict):
+        # Extract overall rating and key points from dict-style evaluation
+        grade = val.get('总体评价等级') or val.get('总体评价') or ''
+        if not grade:
+            for v in val.values():
+                if isinstance(v, str) and any(g in v for g in ('优', '良', '中', '差')):
+                    import re
+                    m = re.search(r'[优良中差](?=\s|$|。|，|,)', v)
+                    if m:
+                        grade = m.group()
+                        break
+        parts = [f'{k}: {v}' for k, v in val.items()]
+        result = '；'.join(parts)
+        if grade and '总体评价' not in result:
+            result += f'；总体评价：{grade}'
+        return result[:max_len] if max_len else result
+    if isinstance(val, list):
+        result = '；'.join(str(v) for v in val)
+        return result[:max_len] if max_len else result
+    if not isinstance(val, str):
+        val = str(val)
+    return val[:max_len] if max_len else val
+
+
+def _extract_grade(evaluation):
+    """Extract overall rating (优/良/中/差) from evaluation value."""
+    text = _safe_str(evaluation)
+    import re
+    for pattern in [r'总体评价[等级]*[：:]\s*([优良中差])', r'总体评价[等级]*[：:]\s*(\S+)',
+                    r'[（(]([优良中差])[）)]', r'([优良中差])\s*$', r'评级[：:]\s*([优良中差])']:
+        m = re.search(pattern, text)
+        if m:
+            g = m.group(1)
+            if g in ('优', '良', '中', '差'):
+                return g
+            if '优' in g:
+                return '优'
+            if '良' in g:
+                return '良'
+            if '差' in g:
+                return '差'
+    if '优' in text:
+        return '优'
+    if '良' in text:
+        return '良'
+    if '差' in text:
+        return '差'
+    return '中'
+
+
 def generate_summary(all_results):
+    """Generate summary report. Always uses data-driven base (no hallucination),
+    optionally appends LLM insights if API call succeeds."""
     import requests
     from collections import Counter
 
     total = len(all_results)
+    if total == 0:
+        return "暂无分析结果，无法生成汇总报告。"
+
     type_counts = Counter()
-    contents = []
-    for idx, r in sorted(all_results.items()):
+    grade_counts = Counter()
+    content_lines = []
+    key_findings = []
+
+    for idx, r in sorted(all_results.items(), key=lambda x: int(x[0])):
         img_type = r.get('image_type', '未知')
         type_counts[img_type] += 1
-        contents.append(f"- 图片{idx}: 类型[{img_type}] {r.get('summary','无')[:200]}")
 
+        summary = _safe_str(r.get('summary', '无'), 150)
+        evaluation = r.get('evaluation', '')
+        grade = _extract_grade(evaluation)
+        grade_counts[grade] += 1
+
+        error_tag = ' [分析异常]' if r.get('_error') else ''
+        content_lines.append(
+            f"图片{idx}: 类型[{img_type}] 评级[{grade}]{error_tag}\n"
+            f"  摘要: {summary}\n"
+            f"  评估: {_safe_str(evaluation, 120)}"
+        )
+
+        # Collect notable findings
+        dims = r.get('dimensions_specs', {})
+        if isinstance(dims, dict) and dims.get('found') and dims.get('items'):
+            for item in dims['items']:
+                name = item.get('name', '')
+                dim = item.get('dimension', '')
+                qty = item.get('quantity', '')
+                detail = f"{name}: {dim}" if dim else name
+                if qty:
+                    detail += f" ({qty})"
+                key_findings.append(f"- 图片{idx}[{img_type}]: {detail}")
+
+        schedule = r.get('construction_schedule', {})
+        if isinstance(schedule, dict) and schedule.get('has_schedule'):
+            start = schedule.get('start_date', '')
+            end = schedule.get('end_date', '')
+            if start or end:
+                key_findings.append(f"- 图片{idx}[{img_type}]: 工期 {start} ~ {end}")
+
+    # Always build data-driven report first (guaranteed accurate)
+    base_report = _build_fallback_summary(all_results, type_counts, grade_counts)
+
+    # Append key findings section
+    if key_findings:
+        base_report += "\n\n### 六、关键施工参数汇总\n"
+        base_report += '\n'.join(key_findings[:30])  # limit to avoid bloat
+        base_report += '\n'
+
+    # Try LLM for additional insights
+    api_keys = Config.SILICONFLOW_API_KEY_LIST
+    summary_model = os.environ.get('SILICONFLOW_SUMMARY_MODEL', '')
+
+    if not summary_model or not api_keys:
+        return base_report
+
+    text = '\n\n'.join(content_lines)
     type_lines = '\n'.join(f"  - {t}: {c} 张" for t, c in type_counts.most_common())
-    text = '\n'.join(contents)
+    grade_lines = ', '.join(f'{g}{c}张' for g, c in grade_counts.most_common())
 
-    prompt = f"""以下是施工方案文档中所有图纸的分析结果，请生成一份综合摘要报告。
-
-【硬数据 - 必须使用以下准确数字】
+    prompt = f"""请对以下施工方案图纸分析结果进行综合评审。
 
 图纸总数：{total} 张
+类型分布：{type_lines}
+评级分布：{grade_lines}
 
-各类型图纸统计（共{len(type_counts)}种类型）：
-{type_lines}
-
-【各图片详情】
+各图分析：
 {text}
 
-请生成结构化的汇总报告，严格使用以上【硬数据】中的数字，不要自己编造。包含：
-1. 总体概述（该项目包含以上{len(type_counts)}种类型的图纸，共计{total}张）
-2. 各类型图纸统计（使用上面提供的准确数字）
-3. 关键发现和亮点
-4. 存在的问题和风险点
-5. 总体评价和建议
+请用3-5句话总结：这套图纸的整体质量水平、最突出的亮点、最需要关注的问题。直接给结论，不要用JSON。"""
 
-请直接输出报告内容，不要使用JSON格式。"""
-
-    api_keys = Config.SILICONFLOW_API_KEY_LIST
-    if not api_keys:
-        return "汇总生成失败: 未配置API Key"
     api_key = random.choice(api_keys)
-
-    summary_model = Config.SILICONFLOW_VISION_MODELS[0] if Config.SILICONFLOW_VISION_MODELS else 'Qwen/Qwen2.5-7B-Instruct'
-
     try:
         resp = requests.post(
             Config.SILICONFLOW_API_URL,
             json={
                 "model": summary_model,
                 "messages": [
-                    {"role": "system", "content": "你是一个专业的建筑工程图纸审查专家。你必须使用用户提供的准确统计数据，不得自行编造数字。"},
+                    {"role": "system", "content": "你是专业建筑工程图纸审查专家。请给出简短、具体、有洞察力的评审意见。"},
                     {"role": "user", "content": prompt}
                 ],
-                "max_tokens": 2048,
+                "max_tokens": 600,
                 "temperature": 0.3,
             },
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=90,
+            timeout=60,
         )
         if resp.status_code == 200:
-            return resp.json()['choices'][0]['message']['content']
+            llm_insight = resp.json()['choices'][0]['message']['content']
+            if llm_insight and len(llm_insight) > 20:
+                base_report += f"\n\n---\n### AI 综合评审意见\n\n{llm_insight}\n"
+            return base_report
         logger.warning(f"汇总API返回 {resp.status_code}")
-        return _build_fallback_summary(all_results)
+        return base_report
     except Exception as e:
-        logger.error(f"摘要生成失败: {e}")
-        return _build_fallback_summary(all_results)
+        logger.warning(f"AI评审补充失败（报告数据部分不受影响）: {e}")
+        return base_report
 
 
-def _build_fallback_summary(all_results):
-    """Build a summary from raw data when the LLM call fails."""
+def _build_fallback_summary(all_results, type_counts=None, grade_counts=None):
+    """Build summary from raw data when LLM is unavailable. Never crashes."""
     from collections import Counter
-    total = len(all_results)
-    type_counts = Counter()
-    for r in all_results.values():
-        type_counts[r.get('image_type', '未知')] += 1
+    try:
+        total = len(all_results)
 
-    lines = [
-        f"## 智能汇总报告（自动生成）\n",
-        f"### 1. 总体概述",
-        f"该项目包含 {len(type_counts)} 种类型的图纸，共计 {total} 张。\n",
-        f"### 2. 各类型图纸统计",
-    ]
-    for t, c in type_counts.most_common():
-        lines.append(f"- {t}: {c} 张")
-    lines.append(f"\n### 3. 图片详情")
-    for idx, r in sorted(all_results.items()):
-        img_type = r.get('image_type', '未知')
-        summary = (r.get('summary', '') or '')[:150]
-        evaluation = (r.get('evaluation', '') or '')[:100]
-        lines.append(f"- **图片{idx}** [{img_type}]: {summary}")
-        if evaluation:
-            lines.append(f"  评估: {evaluation}")
+        if type_counts is None:
+            type_counts = Counter()
+            for r in all_results.values():
+                type_counts[r.get('image_type', '未知')] += 1
 
-    return '\n'.join(lines)
+        if grade_counts is None:
+            grade_counts = Counter()
+            for r in all_results.values():
+                grade_counts[_extract_grade(r.get('evaluation', ''))] += 1
+
+        error_count = sum(1 for r in all_results.values() if r.get('_error'))
+
+        overall_grade = '良'
+        if grade_counts.get('优', 0) >= total * 0.7:
+            overall_grade = '优'
+        elif grade_counts.get('差', 0) >= total * 0.3:
+            overall_grade = '差'
+        elif grade_counts.get('中', 0) + grade_counts.get('差', 0) >= total * 0.5:
+            overall_grade = '中'
+
+        lines = []
+        lines.append("## 施工方案图纸质量综合评估报告\n")
+        lines.append(f"> 生成方式：系统自动汇总 | 图纸总数：{total} 张 | 异常数：{error_count} 张\n")
+
+        lines.append("### 一、总体概述\n")
+        lines.append(f"本项目施工方案包含 **{total}** 张图纸，涵盖 **{len(type_counts)}** 种类型。")
+        lines.append(f"整体质量评定：**{overall_grade}**。")
+        lines.append("")
+
+        lines.append("### 二、图纸类型分布\n")
+        lines.append("| 类型 | 数量 |")
+        lines.append("|------|------|")
+        for t, c in type_counts.most_common():
+            lines.append(f"| {t} | {c} |")
+        lines.append("")
+
+        lines.append("### 三、质量评级统计\n")
+        grade_order = ['优', '良', '中', '差']
+        lines.append("| 评级 | 数量 | 占比 |")
+        lines.append("|------|------|------|")
+        for g in grade_order:
+            c = grade_counts.get(g, 0)
+            if c > 0:
+                pct = round(c / total * 100)
+                lines.append(f"| {g} | {c} | {pct}% |")
+        lines.append("")
+
+        lines.append("### 四、各图片评估详情\n")
+        for idx in sorted(all_results.keys(), key=lambda x: int(x)):
+            r = all_results[idx]
+            img_type = r.get('image_type', '未知')
+            grade = _extract_grade(r.get('evaluation', ''))
+            error_mark = ' ⚠️分析异常' if r.get('_error') else ''
+            lines.append(f"**图片{idx}** [{img_type}] 评级：{grade}{error_mark}")
+            summary = _safe_str(r.get('summary', ''), 200)
+            if summary:
+                lines.append(f"> {summary}")
+            evaluation = _safe_str(r.get('evaluation', ''), 200)
+            if evaluation:
+                lines.append(f"评估：{evaluation}")
+            lines.append("")
+
+        lines.append("### 五、关键发现与建议\n")
+        lines.append(f"- 共识别 **{len(type_counts)}** 种图纸类型，覆盖面{'较全' if len(type_counts) >= 8 else '一般'}。")
+        lines.append(f"- 质量分布：{' | '.join(f'{g}级{c}张' for g, c in grade_counts.most_common())}。")
+
+        if grade_counts.get('差', 0) > 0:
+            lines.append(f"- ⚠️ **{grade_counts['差']} 张图纸评级为差**，建议重点复核并重新出图。")
+        if grade_counts.get('中', 0) > 0:
+            lines.append(f"- {grade_counts['中']} 张图纸评级为中，建议优化完善。")
+        if error_count > 0:
+            lines.append(f"- {error_count} 张图片AI分析异常，建议单独重新分析或人工审核。")
+
+        lines.append("")
+        lines.append("---")
+        lines.append("*本报告由系统基于AI分析结果自动生成，评级仅供参考，最终审查意见以人工复核为准。*")
+
+        return '\n'.join(lines)
+    except Exception as e:
+        logger.error(f"fallback汇总也失败了: {e}", exc_info=True)
+        return f"汇总生成失败: {str(e)}\n\n已完成 {len(all_results)} 张图片分析，请查看各图片详情。"
+
