@@ -1,107 +1,56 @@
-2026-05-02 21:25:03,810 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=1719
-2026-05-02 21:25:03,828 - backend.app.api.docx - INFO -   完成: 类型=临建设施平面布置图
-2026-05-02 21:25:03,828 - backend.app.api.docx - INFO - 批量分析 [aea25970] 7/10: image_007.png
-2026-05-02 21:25:04,088 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_007.png (上下文: 5.1 视频监控及临时用电布置 图7：视频监控及临时用电平面布置图。含监控点位(共24处)、监控室位置、弱电线路敷设路径...)
-2026-05-02 21:27:30,048 - backend.app.services.ai_analysis_service - ERROR - AI分析失败: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Read timed out. (read timeout=120)
-Traceback (most recent call last):
-  File "D:\Anaconda3\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
-    response = conn.getresponse()
-  File "D:\Anaconda3\Lib\site-packages\urllib3\connection.py", line 516, in getresponse
-    httplib_response = super().getresponse()
-  File "D:\Anaconda3\Lib\http\client.py", line 1430, in getresponse
-    response.begin()
-    ~~~~~~~~~~~~~~^^
-  File "D:\Anaconda3\Lib\http\client.py", line 331, in begin
-    version, status, reason = self._read_status()
-                              ~~~~~~~~~~~~~~~~~^^
-  File "D:\Anaconda3\Lib\http\client.py", line 292, in _read_status
-    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
-               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
-  File "D:\Anaconda3\Lib\socket.py", line 719, in readinto
-    return self._sock.recv_into(b)
-           ~~~~~~~~~~~~~~~~~~~~^^^
-  File "D:\Anaconda3\Lib\ssl.py", line 1304, in recv_into
-    return self.read(nbytes, buffer)
-           ~~~~~~~~~^^^^^^^^^^^^^^^^
-  File "D:\Anaconda3\Lib\ssl.py", line 1138, in read
-    return self._sslobj.read(len, buffer)
-           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
-TimeoutError: The read operation timed out
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\adapters.py", line 486, in send
-    resp = conn.urlopen(
-        method=request.method,
-    ...<9 lines>...
-        chunked=chunked,
-    )
-  File "D:\Anaconda3\Lib\site-packages\urllib3\connectionpool.py", line 841, in urlopen
-    retries = retries.increment(
-        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
-    )
-  File "D:\Anaconda3\Lib\site-packages\urllib3\util\retry.py", line 474, in increment
-    raise reraise(type(error), error, _stacktrace)
-          ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\Anaconda3\Lib\site-packages\urllib3\util\util.py", line 39, in reraise
-    raise value
-  File "D:\Anaconda3\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
-    response = self._make_request(
-        conn,
-    ...<10 lines>...
-        **response_kw,
-    )
-  File "D:\Anaconda3\Lib\site-packages\urllib3\connectionpool.py", line 536, in _make_request
-    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
-    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\Anaconda3\Lib\site-packages\urllib3\connectionpool.py", line 367, in _raise_timeout
-    raise ReadTimeoutError(
-        self, url, f"Read timed out. (read timeout={timeout_value})"
-    ) from err
-urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Read timed out. (read timeout=120)
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "C:\Users\wint\Desktop\yolov11\backend\app\services\ai_analysis_service.py", line 88, in analyze_image_with_ai
-    resp = requests.post(Config.SILICONFLOW_API_URL, json=payload, headers=headers, timeout=120)
-  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\api.py", line 115, in post
-    return request("post", url, data=data, json=json, **kwargs)
-  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\api.py", line 59, in request
-    return session.request(method=method, url=url, **kwargs)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\sessions.py", line 589, in request
-    resp = self.send(prep, **send_kwargs)
-  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\sessions.py", line 703, in send
-    r = adapter.send(request, **kwargs)
-  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\adapters.py", line 532, in send
-    raise ReadTimeout(e, request=request)
-requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Read timed out. (read timeout=120)
-2026-05-02 21:27:30,051 - backend.app.api.docx - INFO -   完成: 类型=?
-2026-05-02 21:27:30,052 - backend.app.api.docx - INFO - 批量分析 [aea25970] 8/10: image_008.png
-2026-05-02 21:27:30,052 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_008.png (上下文: 5.2 临建设施平面布置 图8：临建设施平面布置图。含办公区(办公室5间含1间会议室)、生活区(宿舍20间、食堂、卫生间...)
-2026-05-02 21:28:50,182 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=3544
-2026-05-02 21:28:50,183 - backend.app.api.docx - INFO -   完成: 类型=进度计划图
-2026-05-02 21:28:50,183 - backend.app.api.docx - INFO - 批量分析 [aea25970] 9/10: image_009.jpg
-2026-05-02 21:28:50,184 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_009.jpg (上下文: 施工总工期24个月，分五个阶段组织实施。关键线路为：施工准备-土方工程-基础工程-主体结构-装饰装修。 图9：施工进度计...)
-2026-05-02 21:30:41,778 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=2011
-2026-05-02 21:30:41,779 - backend.app.api.docx - INFO -   完成: 类型=临建设施平面布置图
-2026-05-02 21:30:41,779 - backend.app.api.docx - INFO - 批量分析 [aea25970] 10/10: image_010.jpg
-2026-05-02 21:30:41,780 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_010.jpg (上下文: 6.2 基础结构 图10：基础结构平面图。桩基+筏板基础，桩径800mm、桩长28m共216根，筏板厚1.2m C35混...)
-2026-05-02 21:32:12,327 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=1652
-2026-05-02 21:32:12,328 - backend.app.api.docx - INFO -   完成: 类型=临建设施平面布置图
-2026-05-02 21:32:58,659 - backend.app.api.docx - INFO - 批量分析完成 [aea25970]
-2026-05-02 21:39:17,299 - backend.app - INFO - 应用启动
-2026-05-02 21:39:17,301 - backend.app - INFO - 正在加载默认模型...
-2026-05-02 21:39:17,301 - backend.app.services.detection - INFO - 正在加载模型: C:\Users\wint\Desktop\yolov11\backend\models\best.pt
-2026-05-02 21:39:17,542 - backend.app.services.detection - INFO - 模型加载成功
-2026-05-02 21:39:17,542 - backend.app - INFO - 默认模型加载成功
-2026-05-02 21:39:32,302 - backend.app.services.docx_service - INFO - 提取图片 1: image_001.jpg (上下文: 2.1 总平面布置图 图1：施工现场总平面布置图。展示了施工区、办公区、生活区、材料堆场、钢筋加工区、施工大门及临时道路的完整布局，标注清晰，比例准确。 2.2...)
-2026-05-02 21:39:32,305 - backend.app.services.docx_service - INFO - 提取图片 2: image_002.png (上下文: 2.2 土方开挖阶段平面布置图 图2：土方开挖阶段平面布置图。基坑开挖深度5.2m，采用1:1放坡+土钉墙支护。标注了开挖范围、出土方向和临时堆土场位置，土方开...)
-2026-05-02 21:39:32,471 - backend.app.services.docx_service - INFO - 提取图片 3: image_003.png (上下文: 2.3 施工分区图 图3：土方开挖阶段施工分区图。将场地分为A/B/C三个施工分区，各分区独立流水作业，标注了各分区的边界和作业范围。 三个分区实行流水施工组织...)
-2026-05-02 21:39:32,636 - backend.app.services.docx_service - INFO - 提取图片 4: image_004.png (上下文: 3.1 主体结构施工阶段 图4：主体结构施工阶段平面布置图。框架-剪力墙体系，柱网8.4m×8.4m。标注了塔吊(TC6015型2台)、施工电梯(SC200/2...)
-2026-05-02 21:39:32,801 - backend.app.services.docx_service - INFO - 提取图片 5: image_005.png (上下文: 3.2 装饰装修施工阶段 图5：装饰装修施工阶段平面布置图。含外立面装饰、室内精装修、公共区域装修三个施工区，标注了材料垂直运输通道和周转材料堆放区。 四、园林...)
-2026-05-02 21:39:32,965 - backend.app.services.docx_service - INFO - 提取图片 6: image_006.png (上下文: 项目施工前对周边环境进行了详细踏勘，识别出需重点保护的敏感目标，制定了针对性的施工防护措施。 图6：园林绿化施工阶段及周边环境图。展示景观施工范围、绿化种植区域...)
-2026-05-02 21:39:33,059 - backend.app.services.docx_service - INFO - 提取图片 7: image_007.png (上下文: 5.1 视频监控及临时用电布置 图7：视频监控及临时用电平面布置图。含监控点位(共24处)、监控室位置、弱电线路敷设路径、配电房及配电箱分布。 5.2 临建设施...)
-2026-05-02 21:39:33,066 - backend.app.services.docx_service - INFO - 提取图片 8: image_008.png (上下文: 5.2 临建设施平面布置 图8：临建设施平面布置图。含办公区(办公室5间含1间会议室)、生活区(宿舍20间、食堂、卫生间)、门卫室、洗车台、标养室等。 六、施工...)
+2026-05-03 14:31:25,336 - backend.app.services.ai_analysis_service - INFO - [分析] 第3次尝试 image_006.png (上下文: 项目施工前对周边环境进行了详细踏勘，识别出需重点保护的敏感目标，制定了针对性的施工防护措施。 图6：...)
+2026-05-03 14:31:26,620 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
+2026-05-03 14:31:30,621 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: ('Connection aborted.', TimeoutError('The write operation timed out'))
+2026-05-03 14:31:30,632 - backend.app.api.docx - INFO -   完成 #7: 类型=总平面布置图 摘要=该图为总平面布置图（文档上下文描述：5.1 视频监控及临时用电布置 图7：视频监... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
+2026-05-03 14:31:30,797 - backend.app.services.ai_analysis_service - INFO - [分析] API响应长度=902, 前100字: 
+<|begin_of_box|>{
+  "image_type": "基础结构图",
+  "summary": "该图为基础结构平面图，展示桩基+筏板基础体系。图中包含216根桩径800mm、桩长2
+2026-05-03 14:31:30,798 - backend.app.services.ai_analysis_service - INFO - [分析] JSON解析成功: 类型=基础结构图
+2026-05-03 14:31:30,806 - backend.app.api.docx - INFO -   完成 #10: 类型=基础结构图 摘要=该图为基础结构平面图，展示桩基+筏板基础体系。图中包含216根桩径800mm、桩... 评估=1)图纸完整性：图中要素齐全，包含桩基、筏板、标注等核心元素...
+2026-05-03 14:31:35,383 - backend.app.services.ai_analysis_service - WARNING - [分析] 第2次连接失败, 重试...
+2026-05-03 14:31:35,383 - backend.app.services.ai_analysis_service - WARNING - [分析] 第2次连接失败, 重试...
+2026-05-03 14:31:37,384 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-zoyuuaq...syvm
+2026-05-03 14:31:37,385 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-uhzxars...gvpw
+2026-05-03 14:31:37,385 - backend.app.services.ai_analysis_service - INFO - [分析] 第3次尝试 image_008.png (上下文: 5.2 临建设施平面布置 图8：临建设施平面布置图。含办公区(办公室5间含1间会议室)、生活区(宿舍...)
+2026-05-03 14:31:37,386 - backend.app.services.ai_analysis_service - INFO - [分析] 第3次尝试 image_009.jpg (上下文: 施工总工期24个月，分五个阶段组织实施。关键线路为：施工准备-土方工程-基础工程-主体结构-装饰装修...)
+2026-05-03 14:32:23,182 - backend.app.services.ai_analysis_service - WARNING - [分析] 第2次连接失败, 重试...
+2026-05-03 14:32:25,183 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-ryoqxzj...xjjs
+2026-05-03 14:32:25,203 - backend.app.services.ai_analysis_service - INFO - [分析] 第3次尝试 image_007.png (上下文: 5.1 视频监控及临时用电布置 图7：视频监控及临时用电平面布置图。含监控点位(共24处)、监控室位...)
+2026-05-03 14:32:31,085 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
+2026-05-03 14:32:32,550 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
+2026-05-03 14:32:33,256 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
+2026-05-03 14:32:35,086 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: ('Connection aborted.', TimeoutError('The write operation timed out'))
+2026-05-03 14:32:35,097 - backend.app.api.docx - INFO -   完成 #5: 类型=总平面布置图 摘要=该图为总平面布置图（文档上下文描述：3.2 装饰装修施工阶段 图5：装饰装修施工... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
+2026-05-03 14:32:35,097 - backend.app.api.docx - INFO - 批量分析 [施工方案测试文档] #8/10: image_008.png
+2026-05-03 14:32:35,098 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-ryoqxzj...xjjs
+2026-05-03 14:32:35,099 - backend.app.services.ai_analysis_service - INFO - [分析] 第1次尝试 image_008.png (上下文: 5.2 临建设施平面布置 图8：临建设施平面布置图。含办公区(办公室5间含1间会议室)、生活区(宿舍...)
+2026-05-03 14:32:36,551 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: ('Connection aborted.', TimeoutError('The write operation timed out'))
+2026-05-03 14:32:36,563 - backend.app.api.docx - INFO -   完成 #4: 类型=总平面布置图 摘要=该图为总平面布置图（文档上下文描述：3.1 主体结构施工阶段 图4：主体结构施工... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
+2026-05-03 14:32:36,564 - backend.app.api.docx - INFO - 批量分析 [施工方案测试文档] #9/10: image_009.jpg
+2026-05-03 14:32:36,565 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-zoyuuaq...syvm
+2026-05-03 14:32:36,566 - backend.app.services.ai_analysis_service - INFO - [分析] 第1次尝试 image_009.jpg (上下文: 施工总工期24个月，分五个阶段组织实施。关键线路为：施工准备-土方工程-基础工程-主体结构-装饰装修...)
+2026-05-03 14:32:37,256 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: ('Connection aborted.', TimeoutError('The write operation timed out'))
+2026-05-03 14:32:37,266 - backend.app.api.docx - INFO -   完成 #3: 类型=施工分区图 摘要=该图为施工分区图（文档上下文描述：2.3 施工分区图 图3：土方开挖阶段施工分区... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
+2026-05-03 14:32:37,267 - backend.app.api.docx - INFO - 批量分析 [施工方案测试文档] #10/10: image_010.jpg
+2026-05-03 14:32:37,268 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-ryoqxzj...xjjs
+2026-05-03 14:32:37,268 - backend.app.services.ai_analysis_service - INFO - [分析] 第1次尝试 image_010.jpg (上下文: 6.2 基础结构 图10：基础结构平面图。桩基+筏板基础，桩径800mm、桩长28m共216根，筏板...)
+2026-05-03 14:32:45,371 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
+2026-05-03 14:32:45,387 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
+2026-05-03 14:32:49,372 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
+2026-05-03 14:32:49,383 - backend.app.api.docx - INFO -   完成 #9: 类型=进度计划图 摘要=该图为进度计划图（文档上下文描述：施工总工期24个月，分五个阶段组织实施。关键线... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
+2026-05-03 14:32:49,388 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
+2026-05-03 14:32:49,397 - backend.app.api.docx - INFO -   完成 #8: 类型=临建设施平面布置图 摘要=该图为临建设施平面布置图（文档上下文描述：5.2 临建设施平面布置 图8：临建设... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
+2026-05-03 14:32:49,400 - backend.app.services.task_service - INFO - 任务已保存: 施工方案测试文档
+2026-05-03 14:33:14,032 - backend.app.services.task_service - INFO - 分析报告已生成: 施工方案测试文档 (10张)
+2026-05-03 14:33:14,033 - backend.app.services.task_service - INFO - 任务已保存: 施工方案测试文档
+2026-05-03 14:33:14,034 - backend.app.api.docx - INFO - 批量分析完成 [施工方案测试文档] (完成10张, 异常1张)
+2026-05-03 14:33:27,683 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
+2026-05-03 14:33:31,684 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: ('Connection aborted.', TimeoutError('The write operation timed out'))
+2026-05-03 14:33:31,686 - backend.app.api.docx - INFO -   完成 #6: 类型=周边环境图 摘要=该图为周边环境图（文档上下文描述：项目施工前对周边环境进行了详细踏勘，识别出需重... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
+2026-05-03 14:33:45,366 - backend.app.services.ai_analysis_service - WARNING - [分析] 第1次连接失败, 重试...
+2026-05-03 14:33:45,375 - backend.app.services.ai_analysis_service - WARNING - [分析] 第1次连接失败, 重试...
+2026-05-03 14:33:45,383 - backend.app.services.ai_analysis_service - WARNING - [分析] 第1次连接失败, 重试...
+2026-05-03 14:33:46,367 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-ryoqxzj...xjjs
+2026-05-03 14:33:46,368 - backend.app.services.ai_analysis_service - INFO - [分析] 第2次尝试 image_009.jpg (上下文: 施工总工期24个月，分五个阶段组织实施。关键线路为：施工准备-土方工程-基础工程-主体结构-装饰装修...)
+2026-05-03 14:33:46,375 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-zoyuuaq...syvm

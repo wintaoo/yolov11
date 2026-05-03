@@ -3,7 +3,24 @@
     "allow": [
       "Bash(npx vue-tsc *)",
       "Bash(python -c \"import backend.app.api.docx; print\\('docx.py OK'\\)\")",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(python -c \"import flask_socketio; print\\('flask-socketio OK'\\)\")",
+      "Bash(python -c \"import PIL; print\\('Pillow OK'\\)\")",
+      "Bash(pip list *)",
+      "Bash(pip install *)",
+      "Bash(python -c ' *)",
+      "Bash(timeout 5 python -c ' *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(where python *)",
+      "Bash(conda info *)",
+      "Bash(python -c \"import sys; print\\(sys.version\\)\")",
+      "Bash(python *)",
+      "Bash(./venv/Scripts/python -m pip install --upgrade pip -q)",
+      "Bash(./venv/Scripts/pip install *)",
+      "Bash(./venv/Scripts/pip list *)",
+      "Bash(./venv/Scripts/python -c ' *)",
+      "Bash(powershell -Command ' *)"
     ]
   }
 }
