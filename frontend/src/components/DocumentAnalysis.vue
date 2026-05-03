@@ -94,6 +94,11 @@
         </template>
       </el-progress>
 
+      <div v-if="errorImageCount > 0" class="error-banner">
+        <el-icon><WarningFilled /></el-icon>
+        <span>AI分析未完成（网络连接异常），建议重新分析或人工审核。</span>
+      </div>
+
       <div class="content-layout">
         <div class="image-grid">
           <div
@@ -132,7 +137,7 @@
               <el-icon><VideoPlay /></el-icon>
               {{ resultMap[selectedImage.index] ? '重新分析' : 'AI 分析此图' }}
             </el-button>
-            <span v-if="resultMap[selectedImage.index]?._error" class="error-hint">上次分析异常，可重试</span>
+            <span v-if="resultMap[selectedImage.index]?._error" class="error-hint">AI分析未完成（网络连接异常），建议重新分析或人工审核。</span>
           </div>
 
           <div class="detail-info" v-if="selectedResult">
@@ -251,6 +256,10 @@ const taskList = ref<any[]>([])
 const selectedResult = computed(() => {
   if (!selectedImg.value) return null
   return resultMap.value[selectedImg.value] || null
+})
+
+const errorImageCount = computed(() => {
+  return Object.values(resultMap.value).filter((r: any) => r._error).length
 })
 
 const batchSummaryHtml = computed(() => batchSummary.value.replace(/\n/g, '<br>'))
@@ -627,6 +636,13 @@ onUnmounted(() => {
 .task-id { font-weight: 700; color: #6366f1; font-family: monospace; }
 .image-count { color: #64748b; font-size: 14px; }
 .status-actions { display: flex; gap: 8px; }
+
+.error-banner {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; background: #fef2f2; border: 1px solid #fecaca;
+  border-radius: 8px; color: #b91c1c; font-size: 12px;
+  margin-bottom: 4px;
+}
 
 .content-layout { display: flex; gap: 16px; min-height: 500px; }
 
