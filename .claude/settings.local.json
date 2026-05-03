@@ -20,7 +20,8 @@
       "Bash(./venv/Scripts/pip install *)",
       "Bash(./venv/Scripts/pip list *)",
       "Bash(./venv/Scripts/python -c ' *)",
-      "Bash(powershell -Command ' *)"
+      "Bash(powershell -Command ' *)",
+      "Bash(git rm *)"
     ]
   }
 }
