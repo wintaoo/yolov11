@@ -101,7 +101,6 @@
             v-if="detectionResult"
             type="success"
             size="large"
-            plain
             @click="downloadResults"
             class="export-btn"
           >
@@ -452,8 +451,19 @@ onUnmounted(() => {
   background: white; border-radius: 12px; padding: 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,.06); display: flex; flex-direction: column; gap: 10px;
 }
-.detect-btn { width: 100%; height: 44px; font-size: 15px; font-weight: 600; }
-.export-btn { width: 100%; height: 44px; font-size: 15px; font-weight: 600; }
+.detect-btn,
+.export-btn {
+  width: 100% !important;
+  height: 44px !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+}
+.export-btn {
+  margin-left: 0px !important;
+}
 
 .section-label {
   font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase;
