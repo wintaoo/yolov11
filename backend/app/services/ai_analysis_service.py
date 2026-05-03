@@ -48,9 +48,9 @@ ALL_CATEGORIES = [
 
 THINKING_MODELS = {'Qwen/Qwen3-VL-235B-A22B-Thinking'}
 
-BASE_TIMEOUT = 90
-THINKING_TIMEOUT = 150
-MAX_RETRIES_PER_CANDIDATE = 3
+BASE_TIMEOUT = 60
+THINKING_TIMEOUT = 90
+MAX_RETRIES_PER_CANDIDATE = 1
 
 
 def _pick_key_and_model(blocked_keys=None, blocked_models=None, prefer_non_thinking=True):

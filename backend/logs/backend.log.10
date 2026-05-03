@@ -1,56 +1,120 @@
-2026-05-03 14:31:25,336 - backend.app.services.ai_analysis_service - INFO - [分析] 第3次尝试 image_006.png (上下文: 项目施工前对周边环境进行了详细踏勘，识别出需重点保护的敏感目标，制定了针对性的施工防护措施。 图6：...)
-2026-05-03 14:31:26,620 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
-2026-05-03 14:31:30,621 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: ('Connection aborted.', TimeoutError('The write operation timed out'))
-2026-05-03 14:31:30,632 - backend.app.api.docx - INFO -   完成 #7: 类型=总平面布置图 摘要=该图为总平面布置图（文档上下文描述：5.1 视频监控及临时用电布置 图7：视频监... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
-2026-05-03 14:31:30,797 - backend.app.services.ai_analysis_service - INFO - [分析] API响应长度=902, 前100字: 
+2026-05-03 16:39:45,255 - backend.app.api.docx - ERROR - 摘要生成失败 [施工方案测试文档]: slice(None, 100, None)
+Traceback (most recent call last):
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "D:\Anaconda3\Lib\http\client.py", line 1430, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "D:\Anaconda3\Lib\http\client.py", line 331, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "D:\Anaconda3\Lib\http\client.py", line 300, in _read_status
+    raise RemoteDisconnected("Remote end closed connection without"
+                             " response")
+http.client.RemoteDisconnected: Remote end closed connection without response
+
+The above exception was the direct cause of the following exception:
+
+urllib3.exceptions.ProxyError: ('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response'))
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\requests\adapters.py", line 645, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\urllib3\connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\urllib3\util\retry.py", line 535, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\wint\Desktop\yolov11\backend\app\api\docx.py", line 506, in generate_summary
+    resp = requests.post(
+        Config.SILICONFLOW_API_URL,
+    ...<10 lines>...
+        timeout=90,
+    )
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\requests\api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\requests\sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\requests\sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+  File "C:\Users\wint\Desktop\yolov11\venv\Lib\site-packages\requests\adapters.py", line 672, in send
+    raise ProxyError(e, request=request)
+requests.exceptions.ProxyError: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\wint\Desktop\yolov11\backend\app\api\docx.py", line 267, in run_batch
+    summary = generate_summary(task['batch_results'])
+  File "C:\Users\wint\Desktop\yolov11\backend\app\api\docx.py", line 526, in generate_summary
+    return _build_fallback_summary(all_results)
+  File "C:\Users\wint\Desktop\yolov11\backend\app\api\docx.py", line 549, in _build_fallback_summary
+    evaluation = (r.get('evaluation', '') or '')[:100]
+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+KeyError: slice(None, 100, None)
+2026-05-03 16:39:45,263 - backend.app.services.ai_analysis_service - WARNING -   [压缩] 第1次网络连接异常: ProxyError
+2026-05-03 16:39:45,275 - backend.app.services.ai_analysis_service - WARNING -   [原图] 第1次网络连接异常: ProxyError
+2026-05-03 16:39:45,283 - backend.app.services.ai_analysis_service - WARNING -   [压缩] 第1次网络连接异常: ProxyError
+2026-05-03 16:39:45,291 - backend.app.services.task_service - INFO - 分析报告已生成: 施工方案测试文档 (10张)
+2026-05-03 16:39:45,293 - backend.app.services.task_service - INFO - 任务已保存: 施工方案测试文档
+2026-05-03 16:39:45,294 - backend.app.api.docx - INFO - 批量分析完成 [施工方案测试文档] (完成10张, 异常1张)
+2026-05-03 16:39:47,275 - backend.app.services.ai_analysis_service - INFO - [选择] Key=sk-uhzxars...gvpw Model=zai-org/GLM-4.6V
+2026-05-03 16:39:47,275 - backend.app.services.ai_analysis_service - INFO -   [压缩] 第2次 image_006.png model=zai-org/GLM-4.6V timeout=90s
+2026-05-03 16:39:47,278 - backend.app.services.ai_analysis_service - INFO - [选择] Key=sk-ryoqxzj...xjjs Model=zai-org/GLM-4.6V
+2026-05-03 16:39:47,278 - backend.app.services.ai_analysis_service - INFO -   [原图] 第2次 image_008.png model=zai-org/GLM-4.6V timeout=90s
+2026-05-03 16:39:47,284 - backend.app.services.ai_analysis_service - INFO - [选择] Key=sk-sszixss...bfsj Model=zai-org/GLM-4.6V
+2026-05-03 16:39:47,284 - backend.app.services.ai_analysis_service - INFO -   [压缩] 第2次 image_004.png model=zai-org/GLM-4.6V timeout=90s
+2026-05-03 16:40:51,628 - backend.app.services.ai_analysis_service - INFO -   [压缩] 响应740字: 
 <|begin_of_box|>{
-  "image_type": "基础结构图",
-  "summary": "该图为基础结构平面图，展示桩基+筏板基础体系。图中包含216根桩径800mm、桩长2
-2026-05-03 14:31:30,798 - backend.app.services.ai_analysis_service - INFO - [分析] JSON解析成功: 类型=基础结构图
-2026-05-03 14:31:30,806 - backend.app.api.docx - INFO -   完成 #10: 类型=基础结构图 摘要=该图为基础结构平面图，展示桩基+筏板基础体系。图中包含216根桩径800mm、桩... 评估=1)图纸完整性：图中要素齐全，包含桩基、筏板、标注等核心元素...
-2026-05-03 14:31:35,383 - backend.app.services.ai_analysis_service - WARNING - [分析] 第2次连接失败, 重试...
-2026-05-03 14:31:35,383 - backend.app.services.ai_analysis_service - WARNING - [分析] 第2次连接失败, 重试...
-2026-05-03 14:31:37,384 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-zoyuuaq...syvm
-2026-05-03 14:31:37,385 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-uhzxars...gvpw
-2026-05-03 14:31:37,385 - backend.app.services.ai_analysis_service - INFO - [分析] 第3次尝试 image_008.png (上下文: 5.2 临建设施平面布置 图8：临建设施平面布置图。含办公区(办公室5间含1间会议室)、生活区(宿舍...)
-2026-05-03 14:31:37,386 - backend.app.services.ai_analysis_service - INFO - [分析] 第3次尝试 image_009.jpg (上下文: 施工总工期24个月，分五个阶段组织实施。关键线路为：施工准备-土方工程-基础工程-主体结构-装饰装修...)
-2026-05-03 14:32:23,182 - backend.app.services.ai_analysis_service - WARNING - [分析] 第2次连接失败, 重试...
-2026-05-03 14:32:25,183 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-ryoqxzj...xjjs
-2026-05-03 14:32:25,203 - backend.app.services.ai_analysis_service - INFO - [分析] 第3次尝试 image_007.png (上下文: 5.1 视频监控及临时用电布置 图7：视频监控及临时用电平面布置图。含监控点位(共24处)、监控室位...)
-2026-05-03 14:32:31,085 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
-2026-05-03 14:32:32,550 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
-2026-05-03 14:32:33,256 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
-2026-05-03 14:32:35,086 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: ('Connection aborted.', TimeoutError('The write operation timed out'))
-2026-05-03 14:32:35,097 - backend.app.api.docx - INFO -   完成 #5: 类型=总平面布置图 摘要=该图为总平面布置图（文档上下文描述：3.2 装饰装修施工阶段 图5：装饰装修施工... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
-2026-05-03 14:32:35,097 - backend.app.api.docx - INFO - 批量分析 [施工方案测试文档] #8/10: image_008.png
-2026-05-03 14:32:35,098 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-ryoqxzj...xjjs
-2026-05-03 14:32:35,099 - backend.app.services.ai_analysis_service - INFO - [分析] 第1次尝试 image_008.png (上下文: 5.2 临建设施平面布置 图8：临建设施平面布置图。含办公区(办公室5间含1间会议室)、生活区(宿舍...)
-2026-05-03 14:32:36,551 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: ('Connection aborted.', TimeoutError('The write operation timed out'))
-2026-05-03 14:32:36,563 - backend.app.api.docx - INFO -   完成 #4: 类型=总平面布置图 摘要=该图为总平面布置图（文档上下文描述：3.1 主体结构施工阶段 图4：主体结构施工... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
-2026-05-03 14:32:36,564 - backend.app.api.docx - INFO - 批量分析 [施工方案测试文档] #9/10: image_009.jpg
-2026-05-03 14:32:36,565 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-zoyuuaq...syvm
-2026-05-03 14:32:36,566 - backend.app.services.ai_analysis_service - INFO - [分析] 第1次尝试 image_009.jpg (上下文: 施工总工期24个月，分五个阶段组织实施。关键线路为：施工准备-土方工程-基础工程-主体结构-装饰装修...)
-2026-05-03 14:32:37,256 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: ('Connection aborted.', TimeoutError('The write operation timed out'))
-2026-05-03 14:32:37,266 - backend.app.api.docx - INFO -   完成 #3: 类型=施工分区图 摘要=该图为施工分区图（文档上下文描述：2.3 施工分区图 图3：土方开挖阶段施工分区... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
-2026-05-03 14:32:37,267 - backend.app.api.docx - INFO - 批量分析 [施工方案测试文档] #10/10: image_010.jpg
-2026-05-03 14:32:37,268 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-ryoqxzj...xjjs
-2026-05-03 14:32:37,268 - backend.app.services.ai_analysis_service - INFO - [分析] 第1次尝试 image_010.jpg (上下文: 6.2 基础结构 图10：基础结构平面图。桩基+筏板基础，桩径800mm、桩长28m共216根，筏板...)
-2026-05-03 14:32:45,371 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
-2026-05-03 14:32:45,387 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
-2026-05-03 14:32:49,372 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-2026-05-03 14:32:49,383 - backend.app.api.docx - INFO -   完成 #9: 类型=进度计划图 摘要=该图为进度计划图（文档上下文描述：施工总工期24个月，分五个阶段组织实施。关键线... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
-2026-05-03 14:32:49,388 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))
-2026-05-03 14:32:49,397 - backend.app.api.docx - INFO -   完成 #8: 类型=临建设施平面布置图 摘要=该图为临建设施平面布置图（文档上下文描述：5.2 临建设施平面布置 图8：临建设... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
-2026-05-03 14:32:49,400 - backend.app.services.task_service - INFO - 任务已保存: 施工方案测试文档
-2026-05-03 14:33:14,032 - backend.app.services.task_service - INFO - 分析报告已生成: 施工方案测试文档 (10张)
-2026-05-03 14:33:14,033 - backend.app.services.task_service - INFO - 任务已保存: 施工方案测试文档
-2026-05-03 14:33:14,034 - backend.app.api.docx - INFO - 批量分析完成 [施工方案测试文档] (完成10张, 异常1张)
-2026-05-03 14:33:27,683 - backend.app.services.ai_analysis_service - WARNING - [分析] 第3次连接失败, 重试...
-2026-05-03 14:33:31,684 - backend.app.services.ai_analysis_service - ERROR - [分析] 3次尝试均失败, 返回降级结果. 最终错误: 连接失败: ('Connection aborted.', TimeoutError('The write operation timed out'))
-2026-05-03 14:33:31,686 - backend.app.api.docx - INFO -   完成 #6: 类型=周边环境图 摘要=该图为周边环境图（文档上下文描述：项目施工前对周边环境进行了详细踏勘，识别出需重... 评估=AI自动分析未返回完整结果，建议重新分析或人工审核。...
-2026-05-03 14:33:45,366 - backend.app.services.ai_analysis_service - WARNING - [分析] 第1次连接失败, 重试...
-2026-05-03 14:33:45,375 - backend.app.services.ai_analysis_service - WARNING - [分析] 第1次连接失败, 重试...
-2026-05-03 14:33:45,383 - backend.app.services.ai_analysis_service - WARNING - [分析] 第1次连接失败, 重试...
-2026-05-03 14:33:46,367 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-ryoqxzj...xjjs
-2026-05-03 14:33:46,368 - backend.app.services.ai_analysis_service - INFO - [分析] 第2次尝试 image_009.jpg (上下文: 施工总工期24个月，分五个阶段组织实施。关键线路为：施工准备-土方工程-基础工程-主体结构-装饰装修...)
-2026-05-03 14:33:46,375 - backend.app.services.ai_analysis_service - INFO - 选用 API Key: sk-zoyuuaq...syvm
+  "image_type": "周边环境图",
+  "summary": "图纸为园林绿化施工阶段平面布置图，展示项目施...
+2026-05-03 16:40:51,629 - backend.app.services.ai_analysis_service - INFO -   [压缩] 成功: 类型=周边环境图
+2026-05-03 16:40:51,956 - backend.app.api.docx - INFO -   完成 #6: 类型=周边环境图 摘要=图纸为园林绿化施工阶段平面布置图，展示项目施工范围，包含1#物流建筑、2#物流建... 评估=1)图纸完整性：要素齐全，包含图例、说明、工程信息及场地布局...
+2026-05-03 16:40:55,254 - backend.app.services.ai_analysis_service - WARNING -   [原图] 第2次网络连接异常: ProxyError
+2026-05-03 16:40:55,270 - backend.app.services.ai_analysis_service - WARNING -   [压缩] 第2次网络连接异常: ProxyError
+2026-05-03 16:40:59,256 - backend.app.services.ai_analysis_service - INFO - [选择] Key=sk-ryoqxzj...xjjs Model=zai-org/GLM-4.6V
+2026-05-03 16:40:59,256 - backend.app.services.ai_analysis_service - INFO -   [原图] 第3次 image_008.png model=zai-org/GLM-4.6V timeout=90s
+2026-05-03 16:40:59,272 - backend.app.services.ai_analysis_service - INFO - [选择] Key=sk-fklxwsw...ntrf Model=zai-org/GLM-4.6V
+2026-05-03 16:40:59,273 - backend.app.services.ai_analysis_service - INFO -   [压缩] 第3次 image_004.png model=zai-org/GLM-4.6V timeout=90s
+2026-05-03 16:42:05,277 - backend.app.services.ai_analysis_service - WARNING -   [压缩] 第3次网络连接异常: ProxyError
+2026-05-03 16:42:05,277 - backend.app.services.ai_analysis_service - WARNING -   [原图] 第3次网络连接异常: ProxyError
+2026-05-03 16:42:13,278 - backend.app.services.ai_analysis_service - INFO - [选择] Key=sk-fklxwsw...ntrf Model=zai-org/GLM-4.6V
+2026-05-03 16:42:13,278 - backend.app.services.ai_analysis_service - INFO - [选择] Key=sk-fklxwsw...ntrf Model=zai-org/GLM-4.6V
+2026-05-03 16:42:13,278 - backend.app.services.ai_analysis_service - INFO -   [原图] 第4次 image_008.png model=zai-org/GLM-4.6V timeout=90s
+2026-05-03 16:42:13,279 - backend.app.services.ai_analysis_service - INFO -   [压缩] 第4次 image_004.png model=zai-org/GLM-4.6V timeout=90s
+2026-05-03 16:43:25,254 - backend.app.services.ai_analysis_service - WARNING -   [压缩] 第4次网络连接异常: ProxyError
+2026-05-03 16:43:25,264 - backend.app.services.ai_analysis_service - WARNING -   [原图] 第4次网络连接异常: ProxyError
+2026-05-03 16:43:35,255 - backend.app.services.ai_analysis_service - INFO - [分析] 原图 (168977KB) image_004.png
+2026-05-03 16:43:35,256 - backend.app.services.ai_analysis_service - INFO - [选择] Key=sk-fklxwsw...ntrf Model=zai-org/GLM-4.6V
+2026-05-03 16:43:35,300 - backend.app.services.ai_analysis_service - ERROR - [分析] image_008.png 所有尝试失败 (原因:network), 降级. 最后错误: 网络连接异常
+2026-05-03 16:43:35,300 - backend.app.services.ai_analysis_service - INFO -   [原图] 第1次 image_004.png model=zai-org/GLM-4.6V timeout=90s
+2026-05-03 16:43:35,891 - backend.app.api.docx - INFO -   完成 #8: 类型=临建设施平面布置图 摘要=该图推测为临建设施平面布置图。（文档上下文：5.2 临建设施平面布置 图8：临建... 评估=AI分析未完成（网络连接异常），建议重新分析或人工审核。...
+2026-05-03 16:45:35,249 - backend.app.services.ai_analysis_service - WARNING -   [原图] 第1次网络连接异常: ProxyError
+2026-05-03 16:45:37,250 - backend.app.services.ai_analysis_service - INFO - [选择] Key=sk-uhzxars...gvpw Model=zai-org/GLM-4.6V
+2026-05-03 16:45:37,293 - backend.app.services.ai_analysis_service - INFO -   [原图] 第2次 image_004.png model=zai-org/GLM-4.6V timeout=90s
+2026-05-03 16:47:35,252 - backend.app.services.ai_analysis_service - WARNING -   [原图] 第2次网络连接异常: ProxyError
+2026-05-03 16:47:39,254 - backend.app.services.ai_analysis_service - INFO - [选择] Key=sk-fklxwsw...ntrf Model=zai-org/GLM-4.6V
