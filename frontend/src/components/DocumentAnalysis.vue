@@ -66,6 +66,7 @@
           <span class="task-id">任务 #{{ taskId }}</span>
           <span class="image-count">共 {{ totalImages }} 张</span>
           <el-tag v-if="analyzedCount > 0" size="small" type="success">已分析 {{ analyzedCount }}</el-tag>
+          <el-tag v-if="pendingCount > 0" size="small" type="warning">待分析 {{ pendingCount }}</el-tag>
         </div>
         <div class="status-actions">
           <el-button
@@ -260,6 +261,13 @@ const selectedResult = computed(() => {
 
 const errorImageCount = computed(() => {
   return Object.values(resultMap.value).filter((r: any) => r._error).length
+})
+
+const pendingCount = computed(() => {
+  return images.value.filter(img => {
+    const r = resultMap.value[img.index]
+    return !r || r._error
+  }).length
 })
 
 const batchSummaryHtml = computed(() => batchSummary.value.replace(/\n/g, '<br>'))
