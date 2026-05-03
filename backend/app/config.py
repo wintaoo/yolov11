@@ -33,6 +33,21 @@ class Config:
     SILICONFLOW_API_URL = os.environ.get('SILICONFLOW_API_URL', 'https://api.siliconflow.cn/v1/chat/completions')
     SILICONFLOW_VISION_MODEL = os.environ.get('SILICONFLOW_VISION_MODEL', 'zai-org/GLM-4.6V')
 
+    _extra_models = os.environ.get('SILICONFLOW_VISION_MODELS', '')
+    _parsed_extra = [m.strip() for m in _extra_models.split(',') if m.strip()]
+    SILICONFLOW_VISION_MODELS = [SILICONFLOW_VISION_MODEL] + _parsed_extra
+    if 'Qwen/Qwen3-VL-235B-A22B-Thinking' not in SILICONFLOW_VISION_MODELS:
+        SILICONFLOW_VISION_MODELS.append('Qwen/Qwen3-VL-235B-A22B-Thinking')
+    if 'zai-org/GLM-4.6V' not in SILICONFLOW_VISION_MODELS:
+        SILICONFLOW_VISION_MODELS.append('zai-org/GLM-4.6V')
+
+    IMAGE_COMPRESSION_ENABLED = os.environ.get('IMAGE_COMPRESSION_ENABLED', 'true').lower() == 'true'
+    IMAGE_MAX_DIMENSION = int(os.environ.get('IMAGE_MAX_DIMENSION', '2048'))
+    IMAGE_JPEG_QUALITY = int(os.environ.get('IMAGE_JPEG_QUALITY', '85'))
+
+    AI_CACHE_ENABLED = os.environ.get('AI_CACHE_ENABLED', 'true').lower() == 'true'
+    CACHE_AI_DIR = os.path.join(BASE_DIR, 'cache_ai')
+
     LOG_LEVEL = logging.INFO
     LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 

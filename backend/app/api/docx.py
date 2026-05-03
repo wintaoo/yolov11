@@ -1,11 +1,13 @@
-from flask import Blueprint, request, jsonify, current_app, send_file
+from flask import Blueprint, request, jsonify, current_app, send_file, Response, stream_with_context
 from backend.app.services.docx_service import extract_images_from_docx, guess_category_from_context
 from backend.app.services.ai_analysis_service import analyze_image_with_ai
 from backend.app.services import task_service
 from backend.app.config import Config
 import os
 import re
+import json
 import hashlib
+import queue
 import threading
 import logging
 import time
@@ -15,6 +17,7 @@ from datetime import datetime
 
 docx_bp = Blueprint('docx', __name__)
 analysis_tasks = {}
+progress_queues = {}
 logger = logging.getLogger(__name__)
 
 
@@ -193,6 +196,8 @@ def analyze_batch(task_id):
             total = len(images)
             progress_lock = threading.Lock()
             error_count = 0
+            pq = queue.Queue()
+            progress_queues[task_id] = pq
 
             def analyze_one(img):
                 idx = str(img['index'])
@@ -216,6 +221,16 @@ def analyze_batch(task_id):
                     task['batch_results'][idx] = result
                     task['batch_progress'] = task.get('batch_progress', 0) + 1
                     task_service.save_results(Config.TASKS_DIR, task_id, {idx: result})
+                    try:
+                        pq.put_nowait(json.dumps({
+                            'type': 'progress',
+                            'idx': idx,
+                            'progress': task['batch_progress'],
+                            'total': total,
+                            'result': result,
+                        }))
+                    except queue.Full:
+                        pass
                 img_type = result.get('image_type', '?')
                 summary_preview = (result.get('summary', '') or '')[:40]
                 eval_preview = (result.get('evaluation', '') or '')[:30]
@@ -223,8 +238,9 @@ def analyze_batch(task_id):
                 return result
 
             api_key_count = len(Config.SILICONFLOW_API_KEY_LIST) if Config.SILICONFLOW_API_KEY_LIST else 1
-            max_workers = min(max(api_key_count, 3), total)
-            logger.info(f"批量分析 [{task_id}] 共{total}张, 并发数={max_workers}")
+            model_count = len(Config.SILICONFLOW_VISION_MODELS) if Config.SILICONFLOW_VISION_MODELS else 1
+            max_workers = min(max(api_key_count * model_count, 4), total)
+            logger.info(f"批量分析 [{task_id}] 共{total}张, 并发数={max_workers} (Keys={api_key_count} Models={model_count})")
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = {pool.submit(analyze_one, img): img for img in task['images']}
@@ -238,6 +254,10 @@ def analyze_batch(task_id):
             task['batch_error_count'] = error_count
             task['batch_status'] = 'summarizing'
             task_service.save_task(Config.TASKS_DIR, task_id, task)
+            try:
+                pq.put_nowait(json.dumps({'type': 'summarizing', 'progress': task['batch_progress'], 'total': total}))
+            except queue.Full:
+                pass
 
             task['batch_results'] = dict(sorted(task['batch_results'].items(), key=lambda x: int(x[0])))
             task_service.save_results(Config.TASKS_DIR, task_id, task['batch_results'])
@@ -261,6 +281,17 @@ def analyze_batch(task_id):
             task['batch_running'] = False
             task_service.save_task(Config.TASKS_DIR, task_id, task)
             logger.info(f"批量分析完成 [{task_id}] (完成{len(task['batch_results'])}张, 异常{error_count}张)")
+            try:
+                pq.put_nowait(json.dumps({
+                    'type': 'done',
+                    'progress': total,
+                    'total': total,
+                    'summary': summary,
+                    'error_count': error_count,
+                    'status': 'completed',
+                }))
+            except queue.Full:
+                pass
 
         except Exception as e:
             logger.error(f"批量分析崩溃 [{task_id}]: {str(e)}", exc_info=True)
@@ -268,6 +299,12 @@ def analyze_batch(task_id):
             task['batch_error'] = str(e)
             task['status'] = 'error'
             task_service.save_task(Config.TASKS_DIR, task_id, task)
+            try:
+                pq.put_nowait(json.dumps({'type': 'error', 'error': str(e)}))
+            except queue.Full:
+                pass
+        finally:
+            progress_queues.pop(task_id, None)
 
     t = threading.Thread(target=run_batch, daemon=True)
     t.start()
@@ -321,6 +358,41 @@ def get_status(task_id):
         'batch_error_count': task.get('batch_error_count', 0),
         'results': task.get('batch_results', task.get('results', {})),
     })
+
+
+@docx_bp.route('/status/<task_id>/stream', methods=['GET'])
+def get_status_stream(task_id):
+    if task_id not in analysis_tasks:
+        return jsonify({'success': False, 'error': '任务不存在'})
+
+    def event_stream():
+        pq = progress_queues.get(task_id)
+        if not pq:
+            task = analysis_tasks.get(task_id)
+            if task:
+                yield f"data: {json.dumps({'type': 'snapshot', 'progress': task.get('batch_progress', 0), 'total': task.get('total_images', 0), 'results': task.get('batch_results', task.get('results', {})), 'batch_running': task.get('batch_running', False), 'batch_summary': task.get('batch_summary', ''), 'batch_error_count': task.get('batch_error_count', 0), 'status': task.get('status', 'unknown')})}\n\n"
+            yield "data: {\"type\":\"done\",\"reason\":\"no_queue\"}\n\n"
+            return
+
+        while True:
+            try:
+                msg = pq.get(timeout=30)
+                yield f"data: {msg}\n\n"
+                data = json.loads(msg)
+                if data.get('type') in ('done', 'error'):
+                    break
+            except queue.Empty:
+                yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+
+    return Response(
+        stream_with_context(event_stream()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        }
+    )
 
 
 @docx_bp.route('/image/<task_id>/<filename>', methods=['GET'])
@@ -389,18 +461,34 @@ def delete_task(task_id):
 
 def generate_summary(all_results):
     import requests
+    from collections import Counter
+
+    total = len(all_results)
+    type_counts = Counter()
     contents = []
     for idx, r in sorted(all_results.items()):
-        contents.append(f"- 图片{idx}: 类型[{r.get('image_type','未知')}] {r.get('summary','无')[:200]}")
+        img_type = r.get('image_type', '未知')
+        type_counts[img_type] += 1
+        contents.append(f"- 图片{idx}: 类型[{img_type}] {r.get('summary','无')[:200]}")
 
+    type_lines = '\n'.join(f"  - {t}: {c} 张" for t, c in type_counts.most_common())
     text = '\n'.join(contents)
-    prompt = f"""以下是施工方案文档中所有图纸的分析结果，请生成一份综合摘要报告：
 
+    prompt = f"""以下是施工方案文档中所有图纸的分析结果，请生成一份综合摘要报告。
+
+【硬数据 - 必须使用以下准确数字】
+
+图纸总数：{total} 张
+
+各类型图纸统计（共{len(type_counts)}种类型）：
+{type_lines}
+
+【各图片详情】
 {text}
 
-请生成结构化的汇总报告，包含：
-1. 总体概述（该项目包含哪些类型的图纸，共多少张）
-2. 各类型图纸统计
+请生成结构化的汇总报告，严格使用以上【硬数据】中的数字，不要自己编造。包含：
+1. 总体概述（该项目包含以上{len(type_counts)}种类型的图纸，共计{total}张）
+2. 各类型图纸统计（使用上面提供的准确数字）
 3. 关键发现和亮点
 4. 存在的问题和风险点
 5. 总体评价和建议
@@ -412,24 +500,55 @@ def generate_summary(all_results):
         return "汇总生成失败: 未配置API Key"
     api_key = random.choice(api_keys)
 
+    summary_model = Config.SILICONFLOW_VISION_MODELS[0] if Config.SILICONFLOW_VISION_MODELS else 'Qwen/Qwen2.5-7B-Instruct'
+
     try:
         resp = requests.post(
             Config.SILICONFLOW_API_URL,
             json={
-                "model": "Qwen/Qwen2.5-7B-Instruct",
+                "model": summary_model,
                 "messages": [
-                    {"role": "system", "content": "你是一个专业的建筑工程图纸审查专家。"},
+                    {"role": "system", "content": "你是一个专业的建筑工程图纸审查专家。你必须使用用户提供的准确统计数据，不得自行编造数字。"},
                     {"role": "user", "content": prompt}
                 ],
                 "max_tokens": 2048,
                 "temperature": 0.3,
             },
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=60,
+            timeout=90,
         )
         if resp.status_code == 200:
             return resp.json()['choices'][0]['message']['content']
-        return f"汇总生成失败: HTTP {resp.status_code}"
+        logger.warning(f"汇总API返回 {resp.status_code}")
+        return _build_fallback_summary(all_results)
     except Exception as e:
         logger.error(f"摘要生成失败: {e}")
-        return f"摘要生成失败: {str(e)}"
+        return _build_fallback_summary(all_results)
+
+
+def _build_fallback_summary(all_results):
+    """Build a summary from raw data when the LLM call fails."""
+    from collections import Counter
+    total = len(all_results)
+    type_counts = Counter()
+    for r in all_results.values():
+        type_counts[r.get('image_type', '未知')] += 1
+
+    lines = [
+        f"## 智能汇总报告（自动生成）\n",
+        f"### 1. 总体概述",
+        f"该项目包含 {len(type_counts)} 种类型的图纸，共计 {total} 张。\n",
+        f"### 2. 各类型图纸统计",
+    ]
+    for t, c in type_counts.most_common():
+        lines.append(f"- {t}: {c} 张")
+    lines.append(f"\n### 3. 图片详情")
+    for idx, r in sorted(all_results.items()):
+        img_type = r.get('image_type', '未知')
+        summary = (r.get('summary', '') or '')[:150]
+        evaluation = (r.get('evaluation', '') or '')[:100]
+        lines.append(f"- **图片{idx}** [{img_type}]: {summary}")
+        if evaluation:
+            lines.append(f"  评估: {evaluation}")
+
+    return '\n'.join(lines)

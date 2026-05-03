@@ -32,9 +32,10 @@ def main():
         # 启动应用
         logger.info("正在启动应用...")
         app.run(
-            host='0.0.0.0',  # 允许外部访问
+            host='0.0.0.0',
             port=port,
-            debug=False
+            debug=False,
+            threaded=True,
         )
     except Exception as e:
         logger.error(f"应用启动失败: {str(e)}", exc_info=True)

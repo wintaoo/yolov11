@@ -245,6 +245,7 @@ const selectedImg = ref<number | null>(null)
 const selectedImage = ref<any>(null)
 const analyzingSingle = ref(false)
 const pollTimer = ref<number | null>(null)
+const eventSource = ref<EventSource | null>(null)
 const taskList = ref<any[]>([])
 
 const selectedResult = computed(() => {
@@ -398,6 +399,74 @@ const startBatchAnalysis = async () => {
 }
 
 const startPolling = () => {
+  closeEventSource()
+  const baseUrl = axios.defaults.baseURL || ''
+  const url = `${baseUrl}/api/docx/status/${taskId.value}/stream`
+  const es = new EventSource(url)
+  eventSource.value = es
+
+  es.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      if (data.type === 'ping') return
+
+      if (data.type === 'progress') {
+        const result = data.result
+        const idx = parseInt(data.idx)
+        resultMap.value[idx] = result
+        imageCategories.value[idx] = result.image_type || imageCategories.value[idx] || '其他'
+        updateCategoryStats()
+        analyzedCount.value = Object.keys(resultMap.value).length
+        batchPercent.value = Math.round((data.progress / data.total) * 100)
+        batchErrorCount.value = data.error_count || 0
+      } else if (data.type === 'summarizing') {
+        batchStatus.value = 'summarizing'
+        batchPercent.value = Math.round((data.progress / data.total) * 100)
+      } else if (data.type === 'done') {
+        batchRunning.value = false
+        batchPercent.value = 100
+        batchErrorCount.value = data.error_count || 0
+        if (data.summary) batchSummary.value = data.summary
+        es.close()
+        const errMsg = batchErrorCount.value > 0 ? `（${batchErrorCount.value} 张异常）` : ''
+        ElMessage.success(`批量分析完成！${errMsg}`)
+      } else if (data.type === 'error') {
+        batchRunning.value = false
+        es.close()
+        ElMessage.error(`分析异常: ${data.error}`)
+      } else if (data.type === 'snapshot') {
+        batchPercent.value = Math.round((data.progress / data.total) * 100) || 0
+        batchErrorCount.value = data.batch_error_count || 0
+        if (data.results) {
+          Object.entries(data.results).forEach(([k, v]: [string, any]) => {
+            resultMap.value[parseInt(k)] = v
+            imageCategories.value[parseInt(k)] = v.image_type || imageCategories.value[parseInt(k)] || '其他'
+          })
+        }
+        updateCategoryStats()
+        analyzedCount.value = Object.keys(resultMap.value).length
+        if (!data.batch_running && data.batch_summary) {
+          batchRunning.value = false
+          batchSummary.value = data.batch_summary
+          es.close()
+        } else if (!data.batch_running) {
+          batchRunning.value = false
+          es.close()
+        } else {
+          batchRunning.value = true
+        }
+      }
+    } catch {}
+  }
+
+  es.onerror = () => {
+    es.close()
+    // fallback to polling if SSE fails
+    startHttpPolling()
+  }
+}
+
+const startHttpPolling = () => {
   if (pollTimer.value) clearInterval(pollTimer.value)
   pollTimer.value = window.setInterval(async () => {
     try {
@@ -433,8 +502,19 @@ const startPolling = () => {
   }, 1000)
 }
 
+const closeEventSource = () => {
+  if (eventSource.value) {
+    eventSource.value.close()
+    eventSource.value = null
+  }
+  if (pollTimer.value) {
+    clearInterval(pollTimer.value)
+    pollTimer.value = null
+  }
+}
+
 const resetTask = () => {
-  if (pollTimer.value) clearInterval(pollTimer.value)
+  closeEventSource()
   taskId.value = ''
   images.value = []
   resultMap.value = {}
@@ -496,7 +576,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (pollTimer.value) clearInterval(pollTimer.value)
+  closeEventSource()
 })
 </script>
 

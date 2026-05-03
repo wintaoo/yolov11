@@ -147,3 +147,35 @@ def convert_to_base64(filepath):
     import base64
     with open(filepath, 'rb') as f:
         return base64.b64encode(f.read()).decode('utf-8')
+
+
+def compress_and_encode(filepath, max_dimension=2048, quality=85):
+    """Compress image and return base64 string. Returns None if compression fails."""
+    import base64
+    import io
+    try:
+        from PIL import Image
+        img = Image.open(filepath)
+        original_w, original_h = img.size
+        ratio = min(max_dimension / max(original_w, original_h), 1.0)
+        if ratio < 1.0:
+            new_size = (int(original_w * ratio), int(original_h * ratio))
+            img = img.resize(new_size, Image.LANCZOS)
+
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=quality, optimize=True)
+        compressed_size = buf.tell()
+        original_size = os.path.getsize(filepath)
+
+        if compressed_size >= original_size * 0.8:
+            logger.debug(f"压缩无显著收益 ({original_size}->{compressed_size} bytes), 跳过")
+            return None
+
+        logger.debug(f"压缩: {original_w}x{original_h}->{new_size[0] if ratio < 1.0 else original_w}x{new_size[1] if ratio < 1.0 else original_h}, {original_size}->{compressed_size} bytes")
+        return base64.b64encode(buf.getvalue()).decode('utf-8')
+    except Exception as e:
+        logger.warning(f"图片压缩失败, 使用原图: {e}")
+        return None
