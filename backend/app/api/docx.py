@@ -192,12 +192,52 @@ def analyze_batch(task_id):
 
     def run_batch():
         try:
-            images = list(enumerate(task['images']))
-            total = len(images)
+            # Only re-process unanalyzed or previously-errored images
+            existing_results = task.get('results', {})
+            pending_images = []
+            for img in task['images']:
+                idx = str(img['index'])
+                result = existing_results.get(idx)
+                if result is None or result.get('_error'):
+                    pending_images.append(img)
+
+            total = len(pending_images)
             progress_lock = threading.Lock()
             error_count = 0
             pq = queue.Queue()
             progress_queues[task_id] = pq
+
+            # Pre-populate with already successful results so they survive the batch
+            for img in task['images']:
+                idx = str(img['index'])
+                result = existing_results.get(idx)
+                if result is not None and not result.get('_error'):
+                    task['batch_results'][idx] = result
+                    task_service.save_results(Config.TASKS_DIR, task_id, {idx: result})
+
+            logger.info(f"批量分析 [{task_id}] 共{task['total_images']}张, 待处理{total}张(跳过{task['total_images'] - total}张已完成)")
+
+            if total == 0:
+                task['batch_progress'] = 0
+                task['batch_total'] = 0
+                task['batch_error_count'] = 0
+                task['batch_status'] = 'completed'
+                task['status'] = 'completed'
+                task['batch_running'] = False
+                task_service.save_task(Config.TASKS_DIR, task_id, task)
+                try:
+                    pq.put_nowait(json.dumps({
+                        'type': 'done',
+                        'progress': 0,
+                        'total': 0,
+                        'summary': task.get('batch_summary', ''),
+                        'error_count': 0,
+                        'status': 'completed',
+                    }))
+                except queue.Full:
+                    pass
+                progress_queues.pop(task_id, None)
+                return
 
             def analyze_one(img):
                 idx = str(img['index'])
@@ -239,11 +279,11 @@ def analyze_batch(task_id):
 
             api_key_count = len(Config.SILICONFLOW_API_KEY_LIST) if Config.SILICONFLOW_API_KEY_LIST else 1
             model_count = len(Config.SILICONFLOW_VISION_MODELS) if Config.SILICONFLOW_VISION_MODELS else 1
-            max_workers = min(max(api_key_count * model_count, 4), total)
-            logger.info(f"批量分析 [{task_id}] 共{total}张, 并发数={max_workers} (Keys={api_key_count} Models={model_count})")
+            max_workers = min(max(api_key_count * model_count, 4), max(total, 1))
+            logger.info(f"批量分析 [{task_id}] 并发数={max_workers} (Keys={api_key_count} Models={model_count})")
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = {pool.submit(analyze_one, img): img for img in task['images']}
+                futures = {pool.submit(analyze_one, img): img for img in pending_images}
                 for future in concurrent.futures.as_completed(futures):
                     try:
                         future.result()
@@ -262,12 +302,13 @@ def analyze_batch(task_id):
             task['batch_results'] = dict(sorted(task['batch_results'].items(), key=lambda x: int(x[0])))
             task_service.save_results(Config.TASKS_DIR, task_id, task['batch_results'])
 
+            full_total = task['total_images']
             summary = None
             try:
                 summary = generate_summary(task['batch_results'])
             except Exception as e:
                 logger.error(f"摘要生成失败 [{task_id}]: {e}", exc_info=True)
-                summary = f"汇总生成失败: {str(e)}\n\n已完成 {len(task['batch_results'])}/{total} 张图片分析。"
+                summary = f"汇总生成失败: {str(e)}\n\n已完成 {len(task['batch_results'])}/{full_total} 张图片分析。"
             task['batch_summary'] = summary
             task_service.save_summary(Config.TASKS_DIR, task_id, summary)
 
@@ -280,7 +321,7 @@ def analyze_batch(task_id):
             task['status'] = 'completed'
             task['batch_running'] = False
             task_service.save_task(Config.TASKS_DIR, task_id, task)
-            logger.info(f"批量分析完成 [{task_id}] (完成{len(task['batch_results'])}张, 异常{error_count}张)")
+            logger.info(f"批量分析完成 [{task_id}] (完成{len(task['batch_results'])}/{full_total}张, 本次处理{total}张, 异常{error_count}张)")
             try:
                 pq.put_nowait(json.dumps({
                     'type': 'done',

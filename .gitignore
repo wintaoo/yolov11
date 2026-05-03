@@ -40,6 +40,7 @@ frontend/dist/
 
 # 缓存和上传
 backend/cache/
+backend/app/cache_ai/
 backend/uploads/
 backend/docx_images/
 backend/tasks/

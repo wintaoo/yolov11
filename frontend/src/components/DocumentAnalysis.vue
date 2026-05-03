@@ -399,7 +399,15 @@ const startBatchAnalysis = async () => {
       batchRunning.value = true
       batchPercent.value = 0
       batchErrorCount.value = 0
-      ElMessage.info(`批量分析已启动，共 ${res.data.total} 张图片`)
+      const total = res.data.total || 0
+      if (total === 0) {
+        ElMessage.info('所有图片已分析完成，无待处理项')
+        batchRunning.value = false
+        return
+      }
+      const prevDone = totalImages.value - total
+      const hint = prevDone > 0 ? `（跳过 ${prevDone} 张已完成，重试 ${total} 张失败/未处理）` : `共 ${total} 张图片`
+      ElMessage.info(`批量分析已启动，${hint}`)
       startPolling()
     }
   } catch (err: any) {
@@ -426,11 +434,11 @@ const startPolling = () => {
         imageCategories.value[idx] = result.image_type || imageCategories.value[idx] || '其他'
         updateCategoryStats()
         analyzedCount.value = Object.keys(resultMap.value).length
-        batchPercent.value = Math.round((data.progress / data.total) * 100)
+        batchPercent.value = data.total > 0 ? Math.round((data.progress / data.total) * 100) : 100
         batchErrorCount.value = data.error_count || 0
       } else if (data.type === 'summarizing') {
         batchStatus.value = 'summarizing'
-        batchPercent.value = Math.round((data.progress / data.total) * 100)
+        batchPercent.value = data.total > 0 ? Math.round((data.progress / data.total) * 100) : 100
       } else if (data.type === 'done') {
         batchRunning.value = false
         batchPercent.value = 100
@@ -444,7 +452,7 @@ const startPolling = () => {
         es.close()
         ElMessage.error(`分析异常: ${data.error}`)
       } else if (data.type === 'snapshot') {
-        batchPercent.value = Math.round((data.progress / data.total) * 100) || 0
+        batchPercent.value = data.total > 0 ? Math.round((data.progress / data.total) * 100) : 100 || 0
         batchErrorCount.value = data.batch_error_count || 0
         if (data.results) {
           Object.entries(data.results).forEach(([k, v]: [string, any]) => {
@@ -481,7 +489,7 @@ const startHttpPolling = () => {
     try {
       const res = await axios.get(`/api/docx/status/${taskId.value}`)
       if (res.data.batch_running) {
-        batchPercent.value = Math.round((res.data.batch_progress / res.data.batch_total) * 100)
+        batchPercent.value = res.data.batch_total > 0 ? Math.round((res.data.batch_progress / res.data.batch_total) * 100) : 100
         batchErrorCount.value = res.data.batch_error_count || 0
         const fres = res.data.results || {}
         Object.entries(fres).forEach(([k, v]: [string, any]) => {
