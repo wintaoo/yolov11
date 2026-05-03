@@ -21,7 +21,8 @@
       "Bash(./venv/Scripts/pip list *)",
       "Bash(./venv/Scripts/python -c ' *)",
       "Bash(powershell -Command ' *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "WebSearch"
     ]
   }
 }

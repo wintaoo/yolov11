@@ -48,9 +48,10 @@ ALL_CATEGORIES = [
 
 THINKING_MODELS = {'Qwen/Qwen3-VL-235B-A22B-Thinking'}
 
-BASE_TIMEOUT = 60
-THINKING_TIMEOUT = 90
+BASE_TIMEOUT = 75
+THINKING_TIMEOUT = 120
 MAX_RETRIES_PER_CANDIDATE = 1
+MAX_ORIGINAL_IMAGE_KB = 5120
 
 
 def _pick_key_and_model(blocked_keys=None, blocked_models=None, prefer_non_thinking=True):
@@ -251,7 +252,11 @@ def analyze_image_with_ai(image_path, context_text=""):
     filename = os.path.basename(image_path)
 
     candidates = [(compressed_b64, 'jpeg')] if compressed_b64 else []
-    candidates.append((image_b64, mime))
+    original_kb = len(image_b64) // 1024
+    if original_kb <= MAX_ORIGINAL_IMAGE_KB:
+        candidates.append((image_b64, mime))
+    else:
+        logger.info(f"[分析] 原图过大({original_kb}KB > {MAX_ORIGINAL_IMAGE_KB}KB), 跳过")
 
     last_error = ''
     last_raw = ''
