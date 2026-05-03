@@ -48,21 +48,34 @@ ALL_CATEGORIES = [
 
 THINKING_MODELS = {'Qwen/Qwen3-VL-235B-A22B-Thinking'}
 
+BASE_TIMEOUT = 90
+THINKING_TIMEOUT = 150
+MAX_RETRIES_PER_CANDIDATE = 3
 
-def _pick_key_and_model(exclude_key='', exclude_model=''):
-    keys = [k for k in Config.SILICONFLOW_API_KEY_LIST if k != exclude_key]
-    if not keys:
-        keys = Config.SILICONFLOW_API_KEY_LIST
-    models = [m for m in Config.SILICONFLOW_VISION_MODELS if m != exclude_model]
-    if not models:
-        models = Config.SILICONFLOW_VISION_MODELS
 
+def _pick_key_and_model(blocked_keys=None, blocked_models=None, prefer_non_thinking=True):
+    keys = Config.SILICONFLOW_API_KEY_LIST
     if not keys:
         return '', ''
-    key = random.choice(keys)
-    model = random.choice(models)
+
+    available_keys = [k for k in keys if not blocked_keys or k not in blocked_keys]
+    if not available_keys:
+        available_keys = keys
+
+    models = Config.SILICONFLOW_VISION_MODELS
+    available_models = [m for m in models if not blocked_models or m not in blocked_models]
+    if not available_models:
+        available_models = models
+
+    if prefer_non_thinking and len(available_models) > 1:
+        non_thinking = [m for m in available_models if m not in THINKING_MODELS]
+        if non_thinking:
+            available_models = non_thinking
+
+    key = random.choice(available_keys)
+    model = random.choice(available_models)
     masked_key = key[:10] + '...' + key[-4:] if len(key) > 14 else key[:6] + '...'
-    logger.info(f"选用 Key={masked_key} Model={model}")
+    logger.info(f"[选择] Key={masked_key} Model={model}")
     return key, model
 
 
@@ -151,9 +164,9 @@ def _match_category_from_text(raw_content, context_text=''):
     return None
 
 
-def _build_fallback(raw_content, context_text='', guessed_category='其他'):
+def _build_fallback(raw_content, context_text='', guessed_category='其他', failure_reason=''):
     result = {
-        'image_type': '其他',
+        'image_type': guessed_category if guessed_category != '其他' else '其他',
         'summary': '',
         'evaluation': '',
         'has_drawing': False,
@@ -162,6 +175,7 @@ def _build_fallback(raw_content, context_text='', guessed_category='其他'):
         'construction_schedule': {'has_schedule': False},
         'dimensions_specs': {'found': False},
         'raw_content': raw_content or '',
+        '_fallback': True,
     }
 
     if not raw_content:
@@ -176,13 +190,34 @@ def _build_fallback(raw_content, context_text='', guessed_category='其他'):
     if raw_content.strip():
         result['summary'] = raw_content[:500]
 
+    if failure_reason:
+        reason_map = {
+            'network': '网络连接异常',
+            'auth': 'API密钥认证失败',
+            'timeout': 'AI服务响应超时',
+            'parse': 'AI返回内容解析失败',
+            'empty': 'AI返回内容为空',
+            'unknown': '未知原因',
+        }
+        reason_cn = '、'.join(reason_map.get(r, r) for r in failure_reason.split(','))
+    else:
+        reason_cn = '未知原因'
+
     ctx_label = ''
     if context_text:
         ctx_label = f'（文档上下文：{context_text[:100]}）'
-    if not result['summary'] and ctx_label:
-        result['summary'] = f'该图为{result["image_type"]}{ctx_label}。AI详细分析未成功返回，请尝试重新分析。'
 
-    result['evaluation'] = 'AI自动分析未返回完整结果，建议重新分析或人工审核。'
+    if not result['summary']:
+        result['summary'] = (
+            f'该图推测为{result["image_type"]}。{ctx_label}'
+            f'AI分析未成功（原因：{reason_cn}），'
+            f'建议检查网络后点击"重新分析"，或切换到单张分析模式。'
+        )
+
+    result['evaluation'] = f'AI分析未完成（{reason_cn}），建议重新分析或人工审核。'
+
+    if failure_reason:
+        result['_error'] = f'{reason_cn}: {failure_reason}'
 
     return result
 
@@ -190,7 +225,6 @@ def _build_fallback(raw_content, context_text='', guessed_category='其他'):
 def analyze_image_with_ai(image_path, context_text=""):
     from backend.app.services.docx_service import convert_to_base64
 
-    # 1. Check AI result cache
     if Config.AI_CACHE_ENABLED:
         from backend.app.services.ai_cache import get as cache_get, set as cache_set
         cached = cache_get(image_path)
@@ -202,7 +236,6 @@ def analyze_image_with_ai(image_path, context_text=""):
     mime_map = {'jpg': 'jpeg', 'jpeg': 'jpeg', 'png': 'png', 'bmp': 'bmp', 'webp': 'webp', 'gif': 'gif'}
     mime = mime_map.get(ext, 'jpeg')
 
-    # 2. Try compressed version first, fall back to original
     compressed_b64 = None
     if Config.IMAGE_COMPRESSION_ENABLED:
         from backend.app.services.docx_service import compress_and_encode
@@ -215,41 +248,39 @@ def analyze_image_with_ai(image_path, context_text=""):
         user_prompt += f"\n\n图片在文档中的上下文描述：{context_text[:300]}"
 
     guessed_category = _match_category_from_text('', context_text) or '其他'
-
-    max_retries = 1
-    last_error = ''
-    last_raw = ''
-    tried_keys = set()
-    tried_models = set()
+    filename = os.path.basename(image_path)
 
     candidates = [(compressed_b64, 'jpeg')] if compressed_b64 else []
     candidates.append((image_b64, mime))
 
     last_error = ''
     last_raw = ''
+    failure_types = []
 
     for cand_idx, (img_data, img_mime) in enumerate(candidates):
-        tried_keys.clear()
-        tried_models.clear()
         label = "压缩" if cand_idx == 0 and compressed_b64 else "原图"
-        logger.info(f"[分析] 使用{label}图像 ({len(img_data)//1024}KB)")
+        img_kb = len(img_data) // 1024
+        logger.info(f"[分析] {label} ({img_kb}KB) {filename}")
 
-        for attempt in range(max_retries + 1):
+        blocked_keys = set()
+        blocked_models = set()
+
+        for attempt in range(MAX_RETRIES_PER_CANDIDATE + 1):
+            prefer_non_thinking = (attempt == 0)
             api_key, model = _pick_key_and_model(
-                exclude_key=random.choice(list(tried_keys)) if tried_keys else '',
-                exclude_model=random.choice(list(tried_models)) if tried_models else ''
+                blocked_keys=blocked_keys if len(blocked_keys) < len(Config.SILICONFLOW_API_KEY_LIST) else None,
+                blocked_models=blocked_models if len(blocked_models) < len(Config.SILICONFLOW_VISION_MODELS) else None,
+                prefer_non_thinking=prefer_non_thinking,
             )
             if not api_key:
                 break
-
-            tried_keys.add(api_key)
-            tried_models.add(model)
 
             prompt = user_prompt
             if attempt > 0:
                 prompt += RETRY_PROMPT_SUFFIX
 
             is_thinking = model in THINKING_MODELS
+            timeout = THINKING_TIMEOUT if is_thinking else BASE_TIMEOUT
 
             payload = {
                 "model": model,
@@ -272,20 +303,30 @@ def analyze_image_with_ai(image_path, context_text=""):
                 "Content-Type": "application/json"
             }
 
-            filename = os.path.basename(image_path)
-            logger.info(f"[分析] {label} 第{attempt+1}次 {filename} model={model}")
+            logger.info(f"  [{label}] 第{attempt+1}次 {filename} model={model} timeout={timeout}s")
 
             try:
-                resp = requests.post(Config.SILICONFLOW_API_URL, json=payload, headers=headers, timeout=90)
+                resp = requests.post(Config.SILICONFLOW_API_URL, json=payload, headers=headers, timeout=timeout)
 
                 if resp.status_code in (401, 403):
-                    logger.warning(f"[分析] 认证失败 (HTTP {resp.status_code}), 换Key/Model")
+                    logger.warning(f"  [{label}] HTTP {resp.status_code} (model={model}), 拉黑此Key+Model重试")
+                    blocked_keys.add(api_key)
+                    blocked_models.add(model)
+                    if 'auth' not in failure_types:
+                        failure_types.append('auth')
+                    continue
+
+                if resp.status_code == 429:
+                    logger.warning(f"  [{label}] HTTP 429 限流, 等待5s后重试")
+                    time.sleep(5)
+                    if 'auth' not in failure_types:
+                        failure_types.append('auth')
                     continue
 
                 if resp.status_code != 200:
-                    last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
-                    logger.warning(f"[分析] API异常: {last_error}")
-                    time.sleep(1)
+                    last_error = f"HTTP {resp.status_code}"
+                    logger.warning(f"  [{label}] API异常: HTTP {resp.status_code}")
+                    time.sleep(2 ** attempt)
                     continue
 
                 data = resp.json()
@@ -294,10 +335,20 @@ def analyze_image_with_ai(image_path, context_text=""):
                 content = msg.get('content', '')
                 if is_thinking and not content:
                     reasoning = msg.get('reasoning_content', '')
-                    content = reasoning
+                    if reasoning:
+                        logger.info(f"  [{label}] Thinking模型content为空, 使用reasoning({len(reasoning)}字)")
+                        content = reasoning
 
                 last_raw = content
-                logger.info(f"[分析] 响应长度={len(content)}, 前80字: {content[:80]}")
+
+                if not content or len(content.strip()) < 10:
+                    logger.warning(f"  [{label}] 返回内容过短: '{content[:80]}'")
+                    if 'empty' not in failure_types:
+                        failure_types.append('empty')
+                    time.sleep(2 ** attempt)
+                    continue
+
+                logger.info(f"  [{label}] 响应{len(content)}字: {content[:80]}...")
 
                 parsed, err = _extract_json(content)
                 if parsed:
@@ -313,7 +364,7 @@ def analyze_image_with_ai(image_path, context_text=""):
                     if not parsed.get('evaluation'):
                         parsed['evaluation'] = '已识别图纸内容，评估信息不完整。'
 
-                    logger.info(f"[分析] 成功: 类型={parsed.get('image_type','?')}")
+                    logger.info(f"  [{label}] 成功: 类型={parsed.get('image_type','?')}")
 
                     if Config.AI_CACHE_ENABLED:
                         try:
@@ -322,27 +373,33 @@ def analyze_image_with_ai(image_path, context_text=""):
                             pass
                     return parsed
 
-                last_error = err or 'JSON解析失败'
-                logger.warning(f"[分析] JSON解析失败 (第{attempt+1}次): {err}")
-                if attempt < max_retries:
-                    time.sleep(1)
+                last_error = f'JSON解析失败: {err}'
+                logger.warning(f"  [{label}] {last_error}")
+                if 'parse' not in failure_types:
+                    failure_types.append('parse')
+                time.sleep(2 ** attempt)
 
             except requests.exceptions.Timeout:
-                last_error = '请求超时(90s)'
-                logger.warning(f"[分析] {label} 第{attempt+1}次超时")
-                time.sleep(1)
+                last_error = f'超时({timeout}s)'
+                logger.warning(f"  [{label}] 第{attempt+1}次{last_error}")
+                if 'timeout' not in failure_types:
+                    failure_types.append('timeout')
+                time.sleep(2 ** attempt)
 
-            except requests.exceptions.ConnectionError as e:
-                last_error = f'连接失败: {e}'
-                logger.warning(f"[分析] {label} 第{attempt+1}次连接失败")
-                time.sleep(1)
+            except (requests.exceptions.ConnectionError, requests.exceptions.ProxyError) as e:
+                last_error = f'网络连接异常'
+                logger.warning(f"  [{label}] 第{attempt+1}次{last_error}: {type(e).__name__}")
+                if 'network' not in failure_types:
+                    failure_types.append('network')
+                delay = min(2 ** (attempt + 1), 10)
+                time.sleep(delay)
 
             except Exception as e:
-                last_error = str(e)
-                logger.error(f"[分析] {label} 第{attempt+1}次异常: {e}", exc_info=True)
-                time.sleep(1)
+                last_error = f'{type(e).__name__}: {e}'
+                logger.error(f"  [{label}] 第{attempt+1}次异常: {e}", exc_info=True)
+                time.sleep(2 ** attempt)
 
-    logger.error(f"[分析] 所有尝试均失败, 降级. 错误: {last_error}")
-    result = _build_fallback(last_raw, context_text, guessed_category)
-    result['_error'] = last_error
+    reason = ','.join(failure_types) if failure_types else 'unknown'
+    logger.error(f"[分析] {filename} 所有尝试失败 (原因:{reason}), 降级. 最后错误: {last_error}")
+    result = _build_fallback(last_raw, context_text, guessed_category, reason)
     return result
