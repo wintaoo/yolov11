@@ -15,6 +15,9 @@
         </div>
       </div>
     </header>
+    <div class="ai-disclaimer">
+      <span>本系统在CV的基础上引入大模型用于辅助审查，AI生成可能有误，请仔细甄别。</span>
+    </div>
     <main class="app-main">
       <div class="main-tabs">
         <button :class="{ active: activeTab === 'detect' }" @click="activeTab = 'detect'">
@@ -145,6 +148,16 @@ body {
 .status-dot.offline {
   background: #fbbf24;
   box-shadow: 0 0 6px #fbbf2480;
+}
+
+.ai-disclaimer {
+  text-align: center;
+  padding: 6px 16px;
+  background: #fff7ed;
+  border-bottom: 1px solid #fed7aa;
+  color: #c2410c;
+  font-size: 12px;
+  letter-spacing: 0.3px;
 }
 
 .app-main {
