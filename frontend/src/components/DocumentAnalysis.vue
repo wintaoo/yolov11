@@ -1,6 +1,44 @@
 <template>
   <div class="docx-panel">
     <div class="upload-zone" v-if="!taskId">
+      <div class="history-panel" v-if="taskList.length > 0">
+        <div class="history-header">
+          <div class="history-title">
+            <el-icon :size="20"><Clock /></el-icon>
+            <span>历史分析记录</span>
+            <el-badge :value="taskList.length" class="history-badge" />
+          </div>
+        </div>
+        <div class="history-list">
+          <div
+            v-for="t in taskList"
+            :key="t.task_id"
+            class="history-card"
+            @click="loadTask(t.task_id)"
+          >
+            <div class="history-info">
+              <div class="history-name" :title="t.original_filename">{{ t.original_filename }}</div>
+              <div class="history-meta">
+                <el-tag size="small" :type="statusTagType(t.status)">{{ statusLabel(t) }}</el-tag>
+                <span>{{ t.total_images }} 张图片</span>
+                <span v-if="t.result_count > 0">{{ t.result_count }} 张已分析</span>
+                <span v-if="t.has_report" class="report-badge">分析报告</span>
+                <span v-if="t.has_summary" class="summary-badge">已汇总</span>
+              </div>
+            </div>
+            <div class="history-actions" @click.stop>
+              <el-button size="small" type="primary" plain @click="loadTask(t.task_id)">
+                <el-icon><FolderOpened /></el-icon>
+                打开
+              </el-button>
+              <el-button size="small" type="danger" plain @click="removeTask(t.task_id)">
+                <el-icon><Delete /></el-icon>
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="upload-card">
         <div class="upload-icon">
           <svg viewBox="0 0 64 64" width="64" height="64" fill="none">
@@ -20,40 +58,6 @@
           <input type="file" ref="docxInput" accept=".docx" @change="handleUpload" hidden />
         </label>
       </div>
-
-      <div class="history-panel" v-if="taskList.length > 0">
-        <div class="history-header">
-          <el-icon :size="18"><Clock /></el-icon>
-          <span>历史分析任务 ({{ taskList.length }})</span>
-        </div>
-        <div class="history-list">
-          <div
-            v-for="t in taskList"
-            :key="t.task_id"
-            class="history-card"
-          >
-            <div class="history-info">
-              <div class="history-name" :title="t.original_filename">{{ t.original_filename }}</div>
-              <div class="history-meta">
-                <el-tag size="small" type="info">{{ t.task_id }}</el-tag>
-                <span>{{ t.total_images }} 张</span>
-                <span v-if="t.result_count > 0" class="done-badge">已分析 {{ t.result_count }}</span>
-                <span v-if="t.has_report" class="report-badge">报告</span>
-                <span v-if="t.has_summary" class="summary-badge">已汇总</span>
-              </div>
-            </div>
-            <div class="history-actions">
-              <el-button size="small" type="primary" plain @click="loadTask(t.task_id)">
-                <el-icon><FolderOpened /></el-icon>
-                打开
-              </el-button>
-              <el-button size="small" type="danger" plain @click="removeTask(t.task_id)">
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <div class="analysis-container" v-else>
@@ -61,6 +65,7 @@
         <div class="status-info">
           <span class="task-id">任务 #{{ taskId }}</span>
           <span class="image-count">共 {{ totalImages }} 张</span>
+          <el-tag v-if="analyzedCount > 0" size="small" type="success">已分析 {{ analyzedCount }}</el-tag>
         </div>
         <div class="status-actions">
           <el-button
@@ -71,19 +76,23 @@
             :disabled="batchRunning"
           >
             <el-icon><VideoPlay /></el-icon>
-            批量分析全部
+            {{ analyzedCount > 0 ? '继续批量分析' : '批量分析全部' }}
           </el-button>
-          <el-button size="small" type="danger" plain @click="resetTask">重新上传</el-button>
+          <el-button size="small" type="danger" plain @click="resetTask">返回列表</el-button>
         </div>
       </div>
 
       <el-progress
         v-if="batchRunning"
         :percentage="batchPercent"
-        :status="batchStatus === 'summarizing' ? 'success' : ''"
+        :status="batchErrorCount > 0 ? 'warning' : (batchStatus === 'summarizing' ? 'success' : '')"
         :stroke-width="8"
         style="margin-bottom: 12px;"
-      />
+      >
+        <template #default v-if="batchErrorCount > 0">
+          {{ batchPercent }}% ({{ batchErrorCount }} 张异常)
+        </template>
+      </el-progress>
 
       <div class="content-layout">
         <div class="image-grid">
@@ -101,6 +110,9 @@
             </div>
             <div class="card-badge" v-if="resultMap[img.index]">
               <el-icon><Check /></el-icon>
+            </div>
+            <div class="card-badge card-badge-error" v-if="resultMap[img.index]?._error">
+              <el-icon><WarningFilled /></el-icon>
             </div>
           </div>
         </div>
@@ -120,6 +132,7 @@
               <el-icon><VideoPlay /></el-icon>
               {{ resultMap[selectedImage.index] ? '重新分析' : 'AI 分析此图' }}
             </el-button>
+            <span v-if="resultMap[selectedImage.index]?._error" class="error-hint">上次分析异常，可重试</span>
           </div>
 
           <div class="detail-info" v-if="selectedResult">
@@ -127,11 +140,18 @@
               <el-tag :type="getTypeColor(selectedResult.image_type)" size="large">
                 {{ selectedResult.image_type || '未分类' }}
               </el-tag>
+              <el-tag v-if="selectedResult._error" type="danger" size="small" effect="dark">
+                分析异常
+              </el-tag>
             </div>
 
             <div class="info-section summary-section" v-if="selectedResult.summary">
               <h4>AI 摘要</h4>
               <p>{{ selectedResult.summary }}</p>
+            </div>
+            <div class="info-section summary-section" v-else>
+              <h4>AI 摘要</h4>
+              <p class="no-data">未获取到摘要信息，请重新分析</p>
             </div>
 
             <div class="info-section" v-if="selectedResult.evaluation">
@@ -204,13 +224,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Upload, Picture, VideoPlay, Check, Trophy, Clock, FolderOpened, Delete } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { Upload, Picture, VideoPlay, Check, Trophy, Clock, FolderOpened, Delete, WarningFilled } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 
 const docxInput = ref<HTMLInputElement | null>(null)
 const taskId = ref('')
 const totalImages = ref(0)
+const analyzedCount = ref(0)
 const images = ref<any[]>([])
 const resultMap = ref<Record<number, any>>({})
 const imageCategories = ref<Record<number, string>>({})
@@ -218,6 +239,7 @@ const categoryStats = ref<Record<string, number>>({})
 const batchRunning = ref(false)
 const batchPercent = ref(0)
 const batchStatus = ref('')
+const batchErrorCount = ref(0)
 const batchSummary = ref('')
 const selectedImg = ref<number | null>(null)
 const selectedImage = ref<any>(null)
@@ -251,6 +273,45 @@ const getEvalTagColor = (level: string): 'success'|'warning'|'danger'|'info' => 
   return 'info'
 }
 
+const statusTagType = (s: string): 'success'|'warning'|'danger'|'info' => {
+  if (s === 'completed') return 'success'
+  if (s === 'analyzing') return 'warning'
+  if (s === 'error') return 'danger'
+  return 'info'
+}
+
+const statusLabel = (t: any) => {
+  const s = t.status
+  if (s === 'completed') return '已完成'
+  if (s === 'analyzing') return '进行中'
+  if (s === 'error') return '异常'
+  if (t.result_count > 0) return `部分完成(${t.result_count}/${t.total_images})`
+  return '待分析'
+}
+
+const populateResults = (results: Record<string, any>, images: any[]) => {
+  const cats: Record<number, string> = {}
+  for (const img of images) {
+    cats[img.index] = img.guessed_category || '其他'
+  }
+  Object.entries(results).forEach(([k, v]: [string, any]) => {
+    resultMap.value[parseInt(k)] = v
+    cats[parseInt(k)] = v.image_type || cats[parseInt(k)] || '其他'
+  })
+  imageCategories.value = cats
+  updateCategoryStats()
+  analyzedCount.value = Object.keys(results).length
+}
+
+const updateCategoryStats = () => {
+  const stats: Record<string, number> = {}
+  for (const [, cat] of Object.entries(imageCategories.value)) {
+    const c = (cat as string) || '其他'
+    stats[c] = (stats[c] || 0) + 1
+  }
+  categoryStats.value = stats
+}
+
 const handleUpload = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
@@ -259,32 +320,38 @@ const handleUpload = async (event: Event) => {
   try {
     const res = await axios.post('/api/docx/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
     if (res.data.success) {
-      taskId.value = res.data.task_id
-      totalImages.value = res.data.total_images
-      images.value = res.data.images
-      resultMap.value = {}
-      const cats: Record<number, string> = {}
-      for (const img of (res.data.images || [])) {
-        cats[img.index] = img.guessed_category || '其他'
-      }
-      const fres = res.data.results || {}
-      Object.entries(fres).forEach(([k, v]: [string, any]) => {
-        resultMap.value[parseInt(k)] = v
-        cats[parseInt(k)] = v.image_type || cats[parseInt(k)] || '其他'
-      })
-      imageCategories.value = cats
-      updateCategoryStats()
-      batchSummary.value = res.data.batch_summary || ''
       if (res.data.reused) {
-        ElMessage.success(`该文档已有历史任务，已自动恢复，共 ${res.data.total_images} 张图片`)
+        ElMessageBox.confirm(
+          res.data.reuse_hint + '，是否打开该历史任务？',
+          '检测到重复文件',
+          { confirmButtonText: '打开历史结果', cancelButtonText: '取消', type: 'info' }
+        ).then(() => {
+          openTask(res.data)
+        }).catch(() => {})
       } else {
-        ElMessage.success(`文档解析完成，共提取 ${res.data.total_images} 张图片`)
+        openTask(res.data)
       }
     } else {
       ElMessage.error(res.data.error || '解析失败')
     }
   } catch (err: any) {
     ElMessage.error(err.message || '上传失败')
+  } finally {
+    if (docxInput.value) docxInput.value.value = ''
+  }
+}
+
+const openTask = (data: any) => {
+  taskId.value = data.task_id
+  totalImages.value = data.total_images
+  images.value = data.images
+  resultMap.value = {}
+  populateResults(data.results || {}, data.images || [])
+  batchSummary.value = data.batch_summary || ''
+  if (data.reused) {
+    ElMessage.success(`已加载历史任务（已分析 ${data.analyzed_count || 0}/${data.total_images} 张）`)
+  } else {
+    ElMessage.success(`文档解析完成，共提取 ${data.total_images} 张图片`)
   }
 }
 
@@ -302,6 +369,7 @@ const analyzeCurrentImage = async () => {
       resultMap.value[selectedImg.value] = res.data.result
       imageCategories.value[selectedImg.value] = res.data.result.image_type || '其他'
       updateCategoryStats()
+      analyzedCount.value = Object.keys(resultMap.value).length
       ElMessage.success('分析完成')
     } else {
       ElMessage.error(res.data.error || '分析失败')
@@ -313,15 +381,6 @@ const analyzeCurrentImage = async () => {
   }
 }
 
-const updateCategoryStats = () => {
-  const stats: Record<string, number> = {}
-  for (const [, cat] of Object.entries(imageCategories.value)) {
-    const c = (cat as string) || '其他'
-    stats[c] = (stats[c] || 0) + 1
-  }
-  categoryStats.value = stats
-}
-
 const startBatchAnalysis = async () => {
   if (!taskId.value || batchRunning.value) return
   try {
@@ -329,6 +388,7 @@ const startBatchAnalysis = async () => {
     if (res.data.success) {
       batchRunning.value = true
       batchPercent.value = 0
+      batchErrorCount.value = 0
       ElMessage.info(`批量分析已启动，共 ${res.data.total} 张图片`)
       startPolling()
     }
@@ -344,28 +404,33 @@ const startPolling = () => {
       const res = await axios.get(`/api/docx/status/${taskId.value}`)
       if (res.data.batch_running) {
         batchPercent.value = Math.round((res.data.batch_progress / res.data.batch_total) * 100)
+        batchErrorCount.value = res.data.batch_error_count || 0
         const fres = res.data.results || {}
         Object.entries(fres).forEach(([k, v]: [string, any]) => {
           resultMap.value[parseInt(k)] = v
-          imageCategories.value[parseInt(k)] = v.image_type || '其他'
+          imageCategories.value[parseInt(k)] = v.image_type || imageCategories.value[parseInt(k)] || '其他'
         })
         updateCategoryStats()
+        analyzedCount.value = Object.keys(resultMap.value).length
         batchStatus.value = res.data.batch_status || ''
       } else if (res.data.batch_summary) {
         batchSummary.value = res.data.batch_summary
         batchRunning.value = false
         batchPercent.value = 100
+        batchErrorCount.value = res.data.batch_error_count || 0
         const fres = res.data.results || {}
         Object.entries(fres).forEach(([k, v]: [string, any]) => {
           resultMap.value[parseInt(k)] = v
-          imageCategories.value[parseInt(k)] = v.image_type || '其他'
+          imageCategories.value[parseInt(k)] = v.image_type || imageCategories.value[parseInt(k)] || '其他'
         })
         updateCategoryStats()
+        analyzedCount.value = Object.keys(resultMap.value).length
         if (pollTimer.value) clearInterval(pollTimer.value)
-        ElMessage.success('批量分析完成！')
+        const errMsg = batchErrorCount.value > 0 ? `（${batchErrorCount.value} 张异常）` : ''
+        ElMessage.success(`批量分析完成！${errMsg}`)
       }
     } catch {}
-  }, 2000)
+  }, 1000)
 }
 
 const resetTask = () => {
@@ -377,9 +442,12 @@ const resetTask = () => {
   categoryStats.value = {}
   batchRunning.value = false
   batchPercent.value = 0
+  batchErrorCount.value = 0
   batchSummary.value = ''
   selectedImg.value = null
   selectedImage.value = null
+  analyzedCount.value = 0
+  fetchTasks()
 }
 
 const fetchTasks = async () => {
@@ -399,17 +467,7 @@ const loadTask = async (tid: string) => {
       totalImages.value = res.data.total_images
       images.value = res.data.images
       resultMap.value = {}
-      const cats: Record<number, string> = {}
-      for (const img of (res.data.images || [])) {
-        cats[img.index] = img.guessed_category || '其他'
-      }
-      const fres = res.data.results || {}
-      Object.entries(fres).forEach(([k, v]: [string, any]) => {
-        resultMap.value[parseInt(k)] = v
-        cats[parseInt(k)] = v.image_type || cats[parseInt(k)] || '其他'
-      })
-      imageCategories.value = cats
-      updateCategoryStats()
+      populateResults(res.data.results || {}, res.data.images || [])
       batchSummary.value = res.data.batch_summary || ''
       ElMessage.success(`已加载历史任务，共 ${res.data.total_images} 张图片`)
     } else {
@@ -422,11 +480,14 @@ const loadTask = async (tid: string) => {
 
 const removeTask = async (tid: string) => {
   try {
+    await ElMessageBox.confirm('确定要删除此任务吗？所有分析结果将被清除。', '确认删除', {
+      confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
+    })
     await axios.delete(`/api/docx/task/${tid}`)
     taskList.value = taskList.value.filter(t => t.task_id !== tid)
     ElMessage.success('任务已删除')
   } catch {
-    ElMessage.error('删除失败')
+    // user cancelled or error
   }
 }
 
@@ -442,7 +503,27 @@ onUnmounted(() => {
 <style scoped>
 .docx-panel { display: flex; flex-direction: column; gap: 16px; }
 
-.upload-zone { display: flex; justify-content: center; padding: 40px 0; }
+.upload-zone { display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 24px 0; }
+
+.history-panel { width: 100%; max-width: 600px; }
+.history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.history-title { display: flex; align-items: center; gap: 8px; color: #1e293b; font-size: 15px; font-weight: 700; }
+.history-badge { margin-left: 4px; }
+.history-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+.history-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: white; border-radius: 10px; padding: 14px 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05); border: 1px solid #f1f5f9;
+  transition: all .15s; cursor: pointer;
+}
+.history-card:hover { border-color: #c7d2fe; background: #fafafe; }
+.history-info { flex: 1; min-width: 0; }
+.history-name { font-size: 14px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-meta { display: flex; gap: 10px; align-items: center; margin-top: 5px; font-size: 12px; color: #94a3b8; flex-wrap: wrap; }
+.history-meta .summary-badge { color: #6366f1; font-weight: 600; }
+.history-meta .report-badge { color: #059669; font-weight: 600; font-size: 11px; padding: 1px 6px; background: #d1fae5; border-radius: 4px; }
+.history-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
 .upload-card {
   text-align: center; background: white; border-radius: 16px; padding: 48px 40px;
   box-shadow: 0 1px 3px rgba(0,0,0,.06); max-width: 480px; width: 100%;
@@ -456,24 +537,6 @@ onUnmounted(() => {
   box-shadow: 0 4px 14px rgba(99,102,241,.35);
 }
 .upload-btn:hover { background: #4f46e5; transform: translateY(-1px); }
-
-.history-panel { max-width: 560px; width: 100%; margin: 0 auto; }
-.history-header { display: flex; align-items: center; gap: 8px; color: #475569; font-size: 14px; font-weight: 600; margin-bottom: 12px; }
-.history-list { display: flex; flex-direction: column; gap: 8px; }
-.history-card {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  background: white; border-radius: 10px; padding: 14px 18px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.05); border: 1px solid #f1f5f9;
-  transition: all .15s;
-}
-.history-card:hover { border-color: #c7d2fe; }
-.history-info { flex: 1; min-width: 0; }
-.history-name { font-size: 14px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-meta { display: flex; gap: 10px; align-items: center; margin-top: 5px; font-size: 12px; color: #94a3b8; }
-.history-meta .summary-badge { color: #6366f1; font-weight: 600; }
-.history-meta .report-badge { color: #059669; font-weight: 600; font-size: 11px; padding: 1px 6px; background: #d1fae5; border-radius: 4px; }
-.history-meta .done-badge { color: #6366f1; font-weight: 600; }
-.history-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 .status-bar {
   display: flex; align-items: center; justify-content: space-between;
@@ -506,6 +569,7 @@ onUnmounted(() => {
 .card-idx { color: #94a3b8; }
 .card-cat { color: #6366f1; font-weight: 600; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-badge { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; background: #22c55e; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+.card-badge.card-badge-error { background: #ef4444; }
 
 .detail-panel {
   width: 400px; flex-shrink: 0; background: white; border-radius: 12px;
@@ -516,13 +580,14 @@ onUnmounted(() => {
 
 .detail-image { padding: 12px; }
 .preview-large { width: 100%; border-radius: 8px; }
-.detail-actions { padding: 8px 16px; border-bottom: 1px solid #f1f5f9; }
+.detail-actions { padding: 8px 16px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px; }
+.error-hint { font-size: 12px; color: #ef4444; }
 .detail-info { padding: 0 16px 16px; }
 .info-header { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; margin-top: 12px; }
-.info-ctx { font-size: 12px; color: #64748b; line-height: 1.5; }
 .info-section { margin-bottom: 16px; }
 .info-section h4 { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
 .info-section p { font-size: 13px; color: #334155; line-height: 1.7; }
+.no-data { color: #94a3b8; font-style: italic; }
 .summary-section { background: #f8fafc; padding: 12px 14px; border-radius: 10px; border: 1px solid #e2e8f0; }
 .summary-section h4 { color: #6366f1; }
 

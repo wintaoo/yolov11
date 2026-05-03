@@ -20,12 +20,25 @@ def images_dir(tasks_root, task_id):
     return os.path.join(task_dir(tasks_root, task_id), 'images')
 
 
+def load_task_meta_field(tasks_root, task_id, field):
+    """Read a single field from task.json without loading the whole task."""
+    filepath = os.path.join(task_dir(tasks_root, task_id), TASK_FILENAME)
+    if not os.path.exists(filepath):
+        return None
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f).get(field)
+    except Exception:
+        return None
+
+
 def save_task(tasks_root, task_id, task_data):
     d = task_dir(tasks_root, task_id)
     os.makedirs(d, exist_ok=True)
     saveable = {
         'task_id': task_id,
         'original_filename': task_data.get('original_filename', ''),
+        'content_md5': task_data.get('content_md5', ''),
         'status': task_data.get('status', 'extracted'),
         'total_images': task_data.get('total_images', 0),
         'images': [{

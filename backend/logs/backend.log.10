@@ -1,46 +1,107 @@
-2026-05-02 21:12:34,076 - backend.app - INFO - 应用启动
-2026-05-02 21:12:34,078 - backend.app - INFO - 正在加载默认模型...
-2026-05-02 21:12:34,078 - backend.app.services.detection - INFO - 正在加载模型: C:\Users\wint\Desktop\yolov11\backend\models\best.pt
-2026-05-02 21:12:34,218 - backend.app.services.detection - INFO - 模型加载成功
-2026-05-02 21:12:34,219 - backend.app - INFO - 默认模型加载成功
-2026-05-02 21:12:50,785 - backend.app.services.docx_service - INFO - 提取图片 1: image_001.jpg (上下文: 2.1 总平面布置图 图1：施工现场总平面布置图。展示了施工区、办公区、生活区、材料堆场、钢筋加工区、施工大门及临时道路的完整布局，标注清晰，比例准确。 2.2...)
-2026-05-02 21:12:50,789 - backend.app.services.docx_service - INFO - 提取图片 2: image_002.png (上下文: 2.2 土方开挖阶段平面布置图 图2：土方开挖阶段平面布置图。基坑开挖深度5.2m，采用1:1放坡+土钉墙支护。标注了开挖范围、出土方向和临时堆土场位置，土方开...)
-2026-05-02 21:12:50,959 - backend.app.services.docx_service - INFO - 提取图片 3: image_003.png (上下文: 2.3 施工分区图 图3：土方开挖阶段施工分区图。将场地分为A/B/C三个施工分区，各分区独立流水作业，标注了各分区的边界和作业范围。 三个分区实行流水施工组织...)
-2026-05-02 21:12:51,131 - backend.app.services.docx_service - INFO - 提取图片 4: image_004.png (上下文: 3.1 主体结构施工阶段 图4：主体结构施工阶段平面布置图。框架-剪力墙体系，柱网8.4m×8.4m。标注了塔吊(TC6015型2台)、施工电梯(SC200/2...)
-2026-05-02 21:12:51,300 - backend.app.services.docx_service - INFO - 提取图片 5: image_005.png (上下文: 3.2 装饰装修施工阶段 图5：装饰装修施工阶段平面布置图。含外立面装饰、室内精装修、公共区域装修三个施工区，标注了材料垂直运输通道和周转材料堆放区。 四、园林...)
-2026-05-02 21:12:51,466 - backend.app.services.docx_service - INFO - 提取图片 6: image_006.png (上下文: 项目施工前对周边环境进行了详细踏勘，识别出需重点保护的敏感目标，制定了针对性的施工防护措施。 图6：园林绿化施工阶段及周边环境图。展示景观施工范围、绿化种植区域...)
-2026-05-02 21:12:51,570 - backend.app.services.docx_service - INFO - 提取图片 7: image_007.png (上下文: 5.1 视频监控及临时用电布置 图7：视频监控及临时用电平面布置图。含监控点位(共24处)、监控室位置、弱电线路敷设路径、配电房及配电箱分布。 5.2 临建设施...)
-2026-05-02 21:12:51,573 - backend.app.services.docx_service - INFO - 提取图片 8: image_008.png (上下文: 5.2 临建设施平面布置 图8：临建设施平面布置图。含办公区(办公室5间含1间会议室)、生活区(宿舍20间、食堂、卫生间)、门卫室、洗车台、标养室等。 六、施工...)
-2026-05-02 21:12:51,577 - backend.app.services.docx_service - INFO - 提取图片 9: image_009.jpg (上下文: 施工总工期24个月，分五个阶段组织实施。关键线路为：施工准备-土方工程-基础工程-主体结构-装饰装修。 图9：施工进度计划图。标注了各施工阶段的起止时间：施工准...)
-2026-05-02 21:12:51,582 - backend.app.services.docx_service - INFO - 提取图片 10: image_010.jpg (上下文: 6.2 基础结构 图10：基础结构平面图。桩基+筏板基础，桩径800mm、桩长28m共216根，筏板厚1.2m C35混凝土。标注了桩位编号、桩顶标高和承台尺寸...)
-2026-05-02 21:12:51,583 - backend.app.services.docx_service - INFO - 从文档中提取了 10 张图片
-2026-05-02 21:12:55,492 - backend.app.api.docx - INFO - 批量分析 [aea25970] 1/10: image_001.jpg
-2026-05-02 21:12:55,502 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_001.jpg (上下文: 2.1 总平面布置图 图1：施工现场总平面布置图。展示了施工区、办公区、生活区、材料堆场、钢筋加工区、施工大门及临时道路...)
-2026-05-02 21:14:24,268 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=2273
-2026-05-02 21:14:24,271 - backend.app.api.docx - INFO -   完成: 类型=总平面布置图
-2026-05-02 21:14:24,271 - backend.app.api.docx - INFO - 批量分析 [aea25970] 2/10: image_002.png
-2026-05-02 21:14:24,272 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_002.png (上下文: 2.2 土方开挖阶段平面布置图 图2：土方开挖阶段平面布置图。基坑开挖深度5.2m，采用1:1放坡+土钉墙支护。标注了开...)
-2026-05-02 21:15:26,752 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=1751
-2026-05-02 21:15:26,756 - backend.app.api.docx - INFO -   完成: 类型=土方工程图
-2026-05-02 21:15:26,756 - backend.app.api.docx - INFO - 批量分析 [aea25970] 3/10: image_003.png
-2026-05-02 21:15:27,490 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_003.png (上下文: 2.3 施工分区图 图3：土方开挖阶段施工分区图。将场地分为A/B/C三个施工分区，各分区独立流水作业，标注了各分区的边...)
-2026-05-02 21:17:20,904 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=1807
-2026-05-02 21:17:20,921 - backend.app.api.docx - INFO -   完成: 类型=施工分区图
-2026-05-02 21:17:20,921 - backend.app.api.docx - INFO - 批量分析 [aea25970] 4/10: image_004.png
-2026-05-02 21:17:21,335 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_004.png (上下文: 3.1 主体结构施工阶段 图4：主体结构施工阶段平面布置图。框架-剪力墙体系，柱网8.4m×8.4m。标注了塔吊(TC6...)
-2026-05-02 21:19:55,722 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=2237
-2026-05-02 21:19:55,738 - backend.app.api.docx - INFO -   完成: 类型=临建设施平面布置图
-2026-05-02 21:19:55,738 - backend.app.api.docx - INFO - 批量分析 [aea25970] 5/10: image_005.png
-2026-05-02 21:19:56,155 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_005.png (上下文: 3.2 装饰装修施工阶段 图5：装饰装修施工阶段平面布置图。含外立面装饰、室内精装修、公共区域装修三个施工区，标注了材料...)
-2026-05-02 21:22:41,685 - backend.app.api.docx - INFO -   完成: 类型=?
-2026-05-02 21:22:41,685 - backend.app.api.docx - INFO - 批量分析 [aea25970] 6/10: image_006.png
-2026-05-02 21:22:42,100 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_006.png (上下文: 项目施工前对周边环境进行了详细踏勘，识别出需重点保护的敏感目标，制定了针对性的施工防护措施。 图6：园林绿化施工阶段及周...)
-2026-05-02 21:23:54,131 - backend.app.services.docx_service - INFO - 提取图片 1: image_001.jpg (上下文: 2.1 总平面布置图 图1：施工现场总平面布置图。展示了施工区、办公区、生活区、材料堆场、钢筋加工区、施工大门及临时道路的完整布局，标注清晰，比例准确。 2.2...)
-2026-05-02 21:23:54,135 - backend.app.services.docx_service - INFO - 提取图片 2: image_002.png (上下文: 2.2 土方开挖阶段平面布置图 图2：土方开挖阶段平面布置图。基坑开挖深度5.2m，采用1:1放坡+土钉墙支护。标注了开挖范围、出土方向和临时堆土场位置，土方开...)
-2026-05-02 21:23:54,273 - backend.app.services.docx_service - INFO - 提取图片 3: image_003.png (上下文: 2.3 施工分区图 图3：土方开挖阶段施工分区图。将场地分为A/B/C三个施工分区，各分区独立流水作业，标注了各分区的边界和作业范围。 三个分区实行流水施工组织...)
-2026-05-02 21:23:54,406 - backend.app.services.docx_service - INFO - 提取图片 4: image_004.png (上下文: 3.1 主体结构施工阶段 图4：主体结构施工阶段平面布置图。框架-剪力墙体系，柱网8.4m×8.4m。标注了塔吊(TC6015型2台)、施工电梯(SC200/2...)
-2026-05-02 21:23:54,543 - backend.app.services.docx_service - INFO - 提取图片 5: image_005.png (上下文: 3.2 装饰装修施工阶段 图5：装饰装修施工阶段平面布置图。含外立面装饰、室内精装修、公共区域装修三个施工区，标注了材料垂直运输通道和周转材料堆放区。 四、园林...)
-2026-05-02 21:23:54,685 - backend.app.services.docx_service - INFO - 提取图片 6: image_006.png (上下文: 项目施工前对周边环境进行了详细踏勘，识别出需重点保护的敏感目标，制定了针对性的施工防护措施。 图6：园林绿化施工阶段及周边环境图。展示景观施工范围、绿化种植区域...)
-2026-05-02 21:23:54,763 - backend.app.services.docx_service - INFO - 提取图片 7: image_007.png (上下文: 5.1 视频监控及临时用电布置 图7：视频监控及临时用电平面布置图。含监控点位(共24处)、监控室位置、弱电线路敷设路径、配电房及配电箱分布。 5.2 临建设施...)
-2026-05-02 21:23:54,768 - backend.app.services.docx_service - INFO - 提取图片 8: image_008.png (上下文: 5.2 临建设施平面布置 图8：临建设施平面布置图。含办公区(办公室5间含1间会议室)、生活区(宿舍20间、食堂、卫生间)、门卫室、洗车台、标养室等。 六、施工...)
-2026-05-02 21:23:54,797 - backend.app.services.docx_service - INFO - 从文档中提取了 10 张图片
+2026-05-02 21:25:03,810 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=1719
+2026-05-02 21:25:03,828 - backend.app.api.docx - INFO -   完成: 类型=临建设施平面布置图
+2026-05-02 21:25:03,828 - backend.app.api.docx - INFO - 批量分析 [aea25970] 7/10: image_007.png
+2026-05-02 21:25:04,088 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_007.png (上下文: 5.1 视频监控及临时用电布置 图7：视频监控及临时用电平面布置图。含监控点位(共24处)、监控室位置、弱电线路敷设路径...)
+2026-05-02 21:27:30,048 - backend.app.services.ai_analysis_service - ERROR - AI分析失败: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Read timed out. (read timeout=120)
+Traceback (most recent call last):
+  File "D:\Anaconda3\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "D:\Anaconda3\Lib\site-packages\urllib3\connection.py", line 516, in getresponse
+    httplib_response = super().getresponse()
+  File "D:\Anaconda3\Lib\http\client.py", line 1430, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "D:\Anaconda3\Lib\http\client.py", line 331, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "D:\Anaconda3\Lib\http\client.py", line 292, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "D:\Anaconda3\Lib\socket.py", line 719, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+  File "D:\Anaconda3\Lib\ssl.py", line 1304, in recv_into
+    return self.read(nbytes, buffer)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "D:\Anaconda3\Lib\ssl.py", line 1138, in read
+    return self._sslobj.read(len, buffer)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\adapters.py", line 486, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "D:\Anaconda3\Lib\site-packages\urllib3\connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "D:\Anaconda3\Lib\site-packages\urllib3\util\retry.py", line 474, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Anaconda3\Lib\site-packages\urllib3\util\util.py", line 39, in reraise
+    raise value
+  File "D:\Anaconda3\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "D:\Anaconda3\Lib\site-packages\urllib3\connectionpool.py", line 536, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Anaconda3\Lib\site-packages\urllib3\connectionpool.py", line 367, in _raise_timeout
+    raise ReadTimeoutError(
+        self, url, f"Read timed out. (read timeout={timeout_value})"
+    ) from err
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Read timed out. (read timeout=120)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\wint\Desktop\yolov11\backend\app\services\ai_analysis_service.py", line 88, in analyze_image_with_ai
+    resp = requests.post(Config.SILICONFLOW_API_URL, json=payload, headers=headers, timeout=120)
+  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "C:\Users\wint\AppData\Roaming\Python\Python313\site-packages\requests\adapters.py", line 532, in send
+    raise ReadTimeout(e, request=request)
+requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='api.siliconflow.cn', port=443): Read timed out. (read timeout=120)
+2026-05-02 21:27:30,051 - backend.app.api.docx - INFO -   完成: 类型=?
+2026-05-02 21:27:30,052 - backend.app.api.docx - INFO - 批量分析 [aea25970] 8/10: image_008.png
+2026-05-02 21:27:30,052 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_008.png (上下文: 5.2 临建设施平面布置 图8：临建设施平面布置图。含办公区(办公室5间含1间会议室)、生活区(宿舍20间、食堂、卫生间...)
+2026-05-02 21:28:50,182 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=3544
+2026-05-02 21:28:50,183 - backend.app.api.docx - INFO -   完成: 类型=进度计划图
+2026-05-02 21:28:50,183 - backend.app.api.docx - INFO - 批量分析 [aea25970] 9/10: image_009.jpg
+2026-05-02 21:28:50,184 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_009.jpg (上下文: 施工总工期24个月，分五个阶段组织实施。关键线路为：施工准备-土方工程-基础工程-主体结构-装饰装修。 图9：施工进度计...)
+2026-05-02 21:30:41,778 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=2011
+2026-05-02 21:30:41,779 - backend.app.api.docx - INFO -   完成: 类型=临建设施平面布置图
+2026-05-02 21:30:41,779 - backend.app.api.docx - INFO - 批量分析 [aea25970] 10/10: image_010.jpg
+2026-05-02 21:30:41,780 - backend.app.services.ai_analysis_service - INFO - 发送AI分析请求: C:\Users\wint\Desktop\yolov11\backend\docx_images\aea25970\image_010.jpg (上下文: 6.2 基础结构 图10：基础结构平面图。桩基+筏板基础，桩径800mm、桩长28m共216根，筏板厚1.2m C35混...)
+2026-05-02 21:32:12,327 - backend.app.services.ai_analysis_service - INFO - AI分析完成: 返回内容长度=1652
+2026-05-02 21:32:12,328 - backend.app.api.docx - INFO -   完成: 类型=临建设施平面布置图
+2026-05-02 21:32:58,659 - backend.app.api.docx - INFO - 批量分析完成 [aea25970]
+2026-05-02 21:39:17,299 - backend.app - INFO - 应用启动
+2026-05-02 21:39:17,301 - backend.app - INFO - 正在加载默认模型...
+2026-05-02 21:39:17,301 - backend.app.services.detection - INFO - 正在加载模型: C:\Users\wint\Desktop\yolov11\backend\models\best.pt
+2026-05-02 21:39:17,542 - backend.app.services.detection - INFO - 模型加载成功
+2026-05-02 21:39:17,542 - backend.app - INFO - 默认模型加载成功
+2026-05-02 21:39:32,302 - backend.app.services.docx_service - INFO - 提取图片 1: image_001.jpg (上下文: 2.1 总平面布置图 图1：施工现场总平面布置图。展示了施工区、办公区、生活区、材料堆场、钢筋加工区、施工大门及临时道路的完整布局，标注清晰，比例准确。 2.2...)
+2026-05-02 21:39:32,305 - backend.app.services.docx_service - INFO - 提取图片 2: image_002.png (上下文: 2.2 土方开挖阶段平面布置图 图2：土方开挖阶段平面布置图。基坑开挖深度5.2m，采用1:1放坡+土钉墙支护。标注了开挖范围、出土方向和临时堆土场位置，土方开...)
+2026-05-02 21:39:32,471 - backend.app.services.docx_service - INFO - 提取图片 3: image_003.png (上下文: 2.3 施工分区图 图3：土方开挖阶段施工分区图。将场地分为A/B/C三个施工分区，各分区独立流水作业，标注了各分区的边界和作业范围。 三个分区实行流水施工组织...)
+2026-05-02 21:39:32,636 - backend.app.services.docx_service - INFO - 提取图片 4: image_004.png (上下文: 3.1 主体结构施工阶段 图4：主体结构施工阶段平面布置图。框架-剪力墙体系，柱网8.4m×8.4m。标注了塔吊(TC6015型2台)、施工电梯(SC200/2...)
+2026-05-02 21:39:32,801 - backend.app.services.docx_service - INFO - 提取图片 5: image_005.png (上下文: 3.2 装饰装修施工阶段 图5：装饰装修施工阶段平面布置图。含外立面装饰、室内精装修、公共区域装修三个施工区，标注了材料垂直运输通道和周转材料堆放区。 四、园林...)
+2026-05-02 21:39:32,965 - backend.app.services.docx_service - INFO - 提取图片 6: image_006.png (上下文: 项目施工前对周边环境进行了详细踏勘，识别出需重点保护的敏感目标，制定了针对性的施工防护措施。 图6：园林绿化施工阶段及周边环境图。展示景观施工范围、绿化种植区域...)
+2026-05-02 21:39:33,059 - backend.app.services.docx_service - INFO - 提取图片 7: image_007.png (上下文: 5.1 视频监控及临时用电布置 图7：视频监控及临时用电平面布置图。含监控点位(共24处)、监控室位置、弱电线路敷设路径、配电房及配电箱分布。 5.2 临建设施...)
+2026-05-02 21:39:33,066 - backend.app.services.docx_service - INFO - 提取图片 8: image_008.png (上下文: 5.2 临建设施平面布置 图8：临建设施平面布置图。含办公区(办公室5间含1间会议室)、生活区(宿舍20间、食堂、卫生间)、门卫室、洗车台、标养室等。 六、施工...)

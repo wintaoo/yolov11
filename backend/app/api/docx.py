@@ -5,6 +5,7 @@ from backend.app.services import task_service
 from backend.app.config import Config
 import os
 import re
+import hashlib
 import threading
 import logging
 import time
@@ -25,6 +26,16 @@ def _images_dir(task_id):
     return task_service.images_dir(Config.TASKS_DIR, task_id)
 
 
+def _file_md5(file_storage):
+    """Compute MD5 hash of an uploaded file's content."""
+    h = hashlib.md5()
+    file_storage.seek(0)
+    for chunk in iter(lambda: file_storage.read(8192), b''):
+        h.update(chunk)
+    file_storage.seek(0)
+    return h.hexdigest()
+
+
 @docx_bp.route('/upload', methods=['POST'])
 def upload_docx():
     try:
@@ -35,31 +46,51 @@ def upload_docx():
         if not file.filename.lower().endswith('.docx'):
             return jsonify({'success': False, 'error': '仅支持 .docx 格式的Word文档'})
 
-        safe_name = re.sub(r'[\\/:*?"<>|]', '_', file.filename.rsplit('.', 1)[0])[:20]
-        task_id = f"{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        safe_name = re.sub(r'[\\/:*?"<>|]', '_', file.filename.rsplit('.', 1)[0])[:50]
 
         existing_tasks = task_service.list_tasks(Config.TASKS_DIR)
         same_doc = next((t for t in existing_tasks if t['original_filename'] == file.filename), None)
+
         if same_doc:
-            logger.info(f"检测到重复文档 [{file.filename}], 复用已存在的任务: {same_doc['task_id']}")
             task_id = same_doc['task_id']
+            logger.info(f"检测到重复文档 [{file.filename}], 复用任务: {task_id}")
             task_data = task_service.load_task(Config.TASKS_DIR, task_id)
             if task_data:
                 task_data['task_id'] = task_id
                 analysis_tasks[task_id] = task_data
                 results = task_data.get('results', {})
+                batch_summary = task_data.get('batch_summary', '')
+                analyzed_count = len(results)
+                total = task_data.get('total_images', 0)
+
                 cat_stats = {}
                 for img in task_data.get('images', []):
                     idx = img['index']
                     if str(idx) in results:
-                        cat_stats[results[str(idx)].get('image_type', '其他')] = cat_stats.get(results[str(idx)].get('image_type', '其他'), 0) + 1
+                        cat_stats[results[str(idx)].get('image_type', img.get('guessed_category', '其他'))] = \
+                            cat_stats.get(results[str(idx)].get('image_type', img.get('guessed_category', '其他')), 0) + 1
                     else:
-                        cat_stats[img.get('guessed_category', '其他')] = cat_stats.get(img.get('guessed_category', '其他'), 0) + 1
+                        cat_stats[img.get('guessed_category', '其他')] = \
+                            cat_stats.get(img.get('guessed_category', '其他'), 0) + 1
+
+                status = task_data.get('status', 'extracted')
+                if status == 'completed':
+                    hint = f'该文件已有完整分析结果（{analyzed_count}/{total} 张），已自动恢复'
+                elif status == 'analyzing' or status == 'extracted':
+                    hint = f'该文件已有历史任务（已分析 {analyzed_count}/{total} 张），可继续分析'
+                elif status == 'error':
+                    hint = f'该文件上次分析异常，已恢复（已分析 {analyzed_count}/{total} 张），可继续分析'
+                else:
+                    hint = f'该文件已有历史记录（{analyzed_count}/{total} 张）'
+
                 return jsonify({
                     'success': True,
                     'task_id': task_id,
                     'reused': True,
-                    'total_images': task_data['total_images'],
+                    'reuse_hint': hint,
+                    'analyzed_count': analyzed_count,
+                    'total_images': total,
+                    'status': status,
                     'images': [{
                         'index': img['index'],
                         'filename': img['filename'],
@@ -67,9 +98,26 @@ def upload_docx():
                         'guessed_category': img.get('guessed_category', '其他'),
                     } for img in task_data.get('images', [])],
                     'results': results,
-                    'batch_summary': task_data.get('batch_summary', ''),
+                    'batch_summary': batch_summary,
                     'category_guess': cat_stats,
                 })
+
+        content_md5 = _file_md5(file)
+        existing_by_hash = next(
+            (t for t in existing_tasks
+             if task_service.load_task_meta_field(Config.TASKS_DIR, t['task_id'], 'content_md5') == content_md5),
+            None
+        )
+        if existing_by_hash:
+            task_id = existing_by_hash['task_id']
+            logger.info(f"检测到内容相同文档 (MD5={content_md5[:8]}), 复用任务: {task_id}")
+        else:
+            task_id = safe_name
+            base_id = task_id
+            counter = 1
+            while os.path.exists(_task_dir(task_id)):
+                task_id = f"{base_id}_{counter}"
+                counter += 1
 
         td = _task_dir(task_id)
         img_dir = _images_dir(task_id)
@@ -87,6 +135,7 @@ def upload_docx():
             'status': 'extracted',
             'task_id': task_id,
             'original_filename': file.filename,
+            'content_md5': content_md5,
             'total_images': extract_result['total'],
             'images': extract_result['images'],
             'output_dir': img_dir,
@@ -135,46 +184,86 @@ def analyze_batch(task_id):
     task['batch_results'] = {}
     task['batch_summary'] = ''
     task['status'] = 'analyzing'
+    task['batch_error_count'] = 0
     task_service.save_task(Config.TASKS_DIR, task_id, task)
 
     def run_batch():
         try:
-            images = task['images']
+            images = list(enumerate(task['images']))
             total = len(images)
             progress_lock = threading.Lock()
+            error_count = 0
 
             def analyze_one(img):
                 idx = str(img['index'])
-                logger.info(f"批量分析 [{task_id}] #{idx}: {img['filename']}")
-                result = analyze_image_with_ai(img['filepath'], img.get('context', ''))
+                logger.info(f"批量分析 [{task_id}] #{idx}/{total}: {img['filename']}")
+                try:
+                    result = analyze_image_with_ai(img['filepath'], img.get('context', ''))
+                except Exception as e:
+                    logger.error(f"图片 #{idx} 分析异常: {e}", exc_info=True)
+                    result = {
+                        'image_type': img.get('guessed_category', '其他'),
+                        'summary': f'分析失败: {str(e)[:200]}',
+                        'evaluation': '分析异常，请重试',
+                        'has_drawing': False,
+                        'drawing_name': '',
+                        'elements': {},
+                        'construction_schedule': {'has_schedule': False},
+                        'dimensions_specs': {'found': False},
+                        '_error': str(e),
+                    }
                 with progress_lock:
                     task['batch_results'][idx] = result
                     task['batch_progress'] = task.get('batch_progress', 0) + 1
                     task_service.save_results(Config.TASKS_DIR, task_id, {idx: result})
-                logger.info(f"  完成 #{idx}: 类型={result.get('image_type', '?')} 摘要={result.get('summary','')[:40]}... 评估={result.get('evaluation','')[:30]}...")
+                img_type = result.get('image_type', '?')
+                summary_preview = (result.get('summary', '') or '')[:40]
+                eval_preview = (result.get('evaluation', '') or '')[:30]
+                logger.info(f"  完成 #{idx}: 类型={img_type} 摘要={summary_preview}... 评估={eval_preview}...")
                 return result
 
-            max_workers = min(5, total)
+            api_key_count = len(Config.SILICONFLOW_API_KEY_LIST) if Config.SILICONFLOW_API_KEY_LIST else 1
+            max_workers = min(max(api_key_count, 3), total)
             logger.info(f"批量分析 [{task_id}] 共{total}张, 并发数={max_workers}")
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = {pool.submit(analyze_one, img): img for img in images}
-                concurrent.futures.wait(futures)
+                futures = {pool.submit(analyze_one, img): img for img in task['images']}
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        future.result()
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"线程执行异常: {e}", exc_info=True)
 
+            task['batch_error_count'] = error_count
             task['batch_status'] = 'summarizing'
-            summary = generate_summary(task['batch_results'])
+            task_service.save_task(Config.TASKS_DIR, task_id, task)
+
+            task['batch_results'] = dict(sorted(task['batch_results'].items(), key=lambda x: int(x[0])))
+            task_service.save_results(Config.TASKS_DIR, task_id, task['batch_results'])
+
+            summary = None
+            try:
+                summary = generate_summary(task['batch_results'])
+            except Exception as e:
+                logger.error(f"摘要生成失败 [{task_id}]: {e}", exc_info=True)
+                summary = f"汇总生成失败: {str(e)}\n\n已完成 {len(task['batch_results'])}/{total} 张图片分析。"
             task['batch_summary'] = summary
             task_service.save_summary(Config.TASKS_DIR, task_id, summary)
-            task_service.save_results(Config.TASKS_DIR, task_id, task['batch_results'])
-            task_service.generate_analysis_report(Config.TASKS_DIR, task_id)
+
+            try:
+                task_service.generate_analysis_report(Config.TASKS_DIR, task_id)
+            except Exception as e:
+                logger.error(f"报告生成失败 [{task_id}]: {e}", exc_info=True)
+
             task['batch_progress'] = total
             task['status'] = 'completed'
             task['batch_running'] = False
             task_service.save_task(Config.TASKS_DIR, task_id, task)
-            logger.info(f"批量分析完成 [{task_id}]")
+            logger.info(f"批量分析完成 [{task_id}] (完成{len(task['batch_results'])}张, 异常{error_count}张)")
 
         except Exception as e:
-            logger.error(f"批量分析失败 [{task_id}]: {str(e)}", exc_info=True)
+            logger.error(f"批量分析崩溃 [{task_id}]: {str(e)}", exc_info=True)
             task['batch_running'] = False
             task['batch_error'] = str(e)
             task['status'] = 'error'
@@ -229,6 +318,7 @@ def get_status(task_id):
         'batch_total': task.get('batch_total', 0),
         'batch_status': task.get('batch_status', ''),
         'batch_summary': task.get('batch_summary', ''),
+        'batch_error_count': task.get('batch_error_count', 0),
         'results': task.get('batch_results', task.get('results', {})),
     })
 
