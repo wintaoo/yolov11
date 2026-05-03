@@ -242,6 +242,15 @@ def analyze_batch(task_id):
             def analyze_one(img):
                 idx = str(img['index'])
                 logger.info(f"批量分析 [{task_id}] #{idx}/{total}: {img['filename']}")
+                # Notify frontend that this image is being analyzed
+                try:
+                    pq.put_nowait(json.dumps({
+                        'type': 'analyzing',
+                        'idx': idx,
+                        'total': total,
+                    }))
+                except queue.Full:
+                    pass
                 try:
                     result = analyze_image_with_ai(img['filepath'], img.get('context', ''))
                 except Exception as e:
@@ -450,6 +459,86 @@ def get_image(task_id, filename):
                     '.bmp': 'image/bmp', '.gif': 'image/gif', '.webp': 'image/webp'}
             return send_file(p, mimetype=mime.get(ext, 'image/png'))
     return jsonify({'success': False, 'error': '文件不存在'}), 404
+
+
+@docx_bp.route('/report/<task_id>/html', methods=['GET'])
+def get_report_html(task_id):
+    """Return the analysis report as a standalone printable HTML page."""
+    if task_id not in analysis_tasks:
+        try:
+            task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+            if not task_data:
+                return '任务不存在', 404
+            analysis_tasks[task_id] = task_data
+        except Exception:
+            return '任务不存在', 404
+
+    task = analysis_tasks[task_id]
+    summary = task.get('batch_summary', '')
+    doc_name = task.get('original_filename', '未知文档')
+
+    html = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分析报告 - {doc_name}</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+    color: #1f2937; line-height: 1.8; font-size: 14px; background: #fff;
+  }}
+  .toolbar {{
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: #1e1b4b; color: white; padding: 10px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }}
+  .toolbar h2 {{ font-size: 16px; font-weight: 600; }}
+  .toolbar button {{
+    padding: 8px 20px; border: none; border-radius: 6px; font-size: 14px;
+    font-weight: 600; cursor: pointer; background: #6366f1; color: white;
+  }}
+  .toolbar button:hover {{ background: #4f46e5; }}
+  .content {{
+    max-width: 900px; margin: 70px auto 40px; padding: 24px 32px;
+  }}
+  .content h1 {{ font-size: 22px; margin: 20px 0 10px; color: #1e293b; }}
+  .content h2 {{ font-size: 18px; margin: 18px 0 8px; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }}
+  .content h3 {{ font-size: 15px; margin: 14px 0 6px; color: #334155; }}
+  .content table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
+  .content th, .content td {{ border: 1px solid #e2e8f0; padding: 6px 12px; text-align: left; font-size: 13px; }}
+  .content th {{ background: #f8fafc; font-weight: 600; }}
+  .content blockquote {{ border-left: 3px solid #6366f1; padding: 4px 12px; color: #64748b; margin: 10px 0; background: #f8fafc; }}
+  .content strong {{ color: #1e293b; }}
+  .content hr {{ border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }}
+  .content p {{ margin: 6px 0; }}
+  .content ul, .content ol {{ padding-left: 24px; margin: 8px 0; }}
+  .content li {{ margin: 2px 0; }}
+  @media print {{
+    .toolbar {{ display: none; }}
+    .content {{ margin-top: 0; padding: 0; max-width: 100%; }}
+    body {{ font-size: 12px; }}
+  }}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <h2>分析报告 - {doc_name}</h2>
+  <button onclick="window.print()">打印 / 导出PDF</button>
+</div>
+<div class="content" id="report-content"></div>
+<script>
+  var markdown = {json.dumps(summary, ensure_ascii=False)};
+  document.getElementById('report-content').innerHTML = marked.parse(markdown);
+  // Auto-trigger print dialog after render
+  setTimeout(function() {{ window.print(); }}, 800);
+</script>
+</body>
+</html>'''
+    return html
 
 
 @docx_bp.route('/tasks', methods=['GET'])

@@ -106,7 +106,12 @@
             v-for="img in images"
             :key="img.index"
             class="image-card"
-            :class="{ selected: selectedImg === img.index, analyzed: resultMap[img.index] }"
+            :class="{
+              selected: selectedImg === img.index,
+              analyzed: resultMap[img.index] && !resultMap[img.index]._error,
+              'status-analyzing': statusMap[img.index] === 'analyzing',
+              'status-error': resultMap[img.index]?._error,
+            }"
             @click="selectImage(img)"
           >
             <img :src="`/api/docx/image/${taskId}/${img.filename}`" class="card-img" loading="lazy" />
@@ -114,7 +119,11 @@
               <span class="card-idx">#{{ img.index }}</span>
               <span class="card-cat">{{ resultMap[img.index]?.image_type || img.guessed_category || '-' }}</span>
             </div>
-            <div class="card-badge" v-if="resultMap[img.index]">
+            <div class="card-status" v-if="statusMap[img.index] === 'analyzing'">
+              <div class="status-spinner"></div>
+            </div>
+            <div class="card-status-dot" :class="'dot-' + (statusMap[img.index] || 'waiting')"></div>
+            <div class="card-badge" v-if="resultMap[img.index] && !resultMap[img.index]._error">
               <el-icon><Check /></el-icon>
             </div>
             <div class="card-badge card-badge-error" v-if="resultMap[img.index]?._error">
@@ -210,8 +219,14 @@
 
       <div class="batch-summary" v-if="batchSummary">
         <div class="summary-header">
-          <el-icon :size="20"><Trophy /></el-icon>
-          <h3>智能汇总报告</h3>
+          <div class="summary-header-left">
+            <el-icon :size="20"><Trophy /></el-icon>
+            <h3>智能汇总报告</h3>
+          </div>
+          <el-button size="small" type="primary" plain @click="exportPdf">
+            <el-icon><Printer /></el-icon>
+            导出PDF
+          </el-button>
         </div>
         <div class="summary-content" v-html="batchSummaryHtml"></div>
       </div>
@@ -230,9 +245,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Upload, Picture, VideoPlay, Check, Trophy, Clock, FolderOpened, Delete, WarningFilled } from '@element-plus/icons-vue'
+import { Upload, Picture, VideoPlay, Check, Trophy, Clock, FolderOpened, Delete, WarningFilled, Printer } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
+import { marked } from 'marked'
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+})
 
 const docxInput = ref<HTMLInputElement | null>(null)
 const taskId = ref('')
@@ -253,6 +274,7 @@ const analyzingSingle = ref(false)
 const pollTimer = ref<number | null>(null)
 const eventSource = ref<EventSource | null>(null)
 const taskList = ref<any[]>([])
+const statusMap = ref<Record<number, string>>({})
 
 const selectedResult = computed(() => {
   if (!selectedImg.value) return null
@@ -270,7 +292,13 @@ const pendingCount = computed(() => {
   }).length
 })
 
-const batchSummaryHtml = computed(() => batchSummary.value.replace(/\n/g, '<br>'))
+const batchSummaryHtml = computed(() => {
+  try {
+    return marked.parse(batchSummary.value) as string
+  } catch {
+    return batchSummary.value.replace(/\n/g, '<br>')
+  }
+})
 
 const getTypeColor = (t: string) => {
   const m: Record<string, string> = { '进度计划图': 'warning', '施工计划图': 'warning', '总平面布置图': '', '分区规划图': 'success' }
@@ -309,13 +337,23 @@ const statusLabel = (t: any) => {
 
 const populateResults = (results: Record<string, any>, images: any[]) => {
   const cats: Record<number, string> = {}
+  const sm: Record<number, string> = {}
   for (const img of images) {
     cats[img.index] = img.guessed_category || '其他'
   }
   Object.entries(results).forEach(([k, v]: [string, any]) => {
-    resultMap.value[parseInt(k)] = v
-    cats[parseInt(k)] = v.image_type || cats[parseInt(k)] || '其他'
+    const idx = parseInt(k)
+    resultMap.value[idx] = v
+    cats[idx] = v.image_type || cats[idx] || '其他'
+    sm[idx] = v._error ? 'error' : 'done'
   })
+  // Set waiting status for unanalyzed images
+  for (const img of images) {
+    if (!(img.index in sm)) {
+      sm[img.index] = 'waiting'
+    }
+  }
+  statusMap.value = sm
   imageCategories.value = cats
   updateCategoryStats()
   analyzedCount.value = Object.keys(results).length
@@ -366,6 +404,14 @@ const openTask = (data: any) => {
   resultMap.value = {}
   populateResults(data.results || {}, data.images || [])
   batchSummary.value = data.batch_summary || ''
+  // Initialize status from existing results
+  const sm: Record<number, string> = {}
+  const res = data.results || {}
+  for (const img of data.images || []) {
+    const r = res[img.index] || res[String(img.index)]
+    sm[img.index] = r && !r._error ? 'done' : r && r._error ? 'error' : 'waiting'
+  }
+  statusMap.value = sm
   if (data.reused) {
     ElMessage.success(`已加载历史任务（已分析 ${data.analyzed_count || 0}/${data.total_images} 张）`)
   } else {
@@ -407,6 +453,14 @@ const startBatchAnalysis = async () => {
       batchRunning.value = true
       batchPercent.value = 0
       batchErrorCount.value = 0
+      // Initialize status for pending images
+      const sm: Record<number, string> = {}
+      images.value.forEach(img => {
+        const r = resultMap.value[img.index]
+        if (!r || r._error) sm[img.index] = 'waiting'
+        else sm[img.index] = 'done'
+      })
+      statusMap.value = sm
       const total = res.data.total || 0
       if (total === 0) {
         ElMessage.info('所有图片已分析完成，无待处理项')
@@ -435,10 +489,14 @@ const startPolling = () => {
       const data = JSON.parse(event.data)
       if (data.type === 'ping') return
 
-      if (data.type === 'progress') {
+      if (data.type === 'analyzing') {
+        const idx = parseInt(data.idx)
+        statusMap.value = { ...statusMap.value, [idx]: 'analyzing' }
+      } else if (data.type === 'progress') {
         const result = data.result
         const idx = parseInt(data.idx)
         resultMap.value[idx] = result
+        statusMap.value = { ...statusMap.value, [idx]: result._error ? 'error' : 'done' }
         imageCategories.value[idx] = result.image_type || imageCategories.value[idx] || '其他'
         updateCategoryStats()
         analyzedCount.value = Object.keys(resultMap.value).length
@@ -461,6 +519,13 @@ const startPolling = () => {
         ElMessage.error(`分析异常: ${data.error}`)
       } else if (data.type === 'snapshot') {
         batchPercent.value = data.total > 0 ? Math.round((data.progress / data.total) * 100) : 100 || 0
+        if (data.results) {
+          const sm: Record<number, string> = {}
+          Object.entries(data.results).forEach(([k, v]: [string, any]) => {
+            sm[parseInt(k)] = v._error ? 'error' : 'done'
+          })
+          statusMap.value = sm
+        }
         batchErrorCount.value = data.batch_error_count || 0
         if (data.results) {
           Object.entries(data.results).forEach(([k, v]: [string, any]) => {
@@ -501,8 +566,10 @@ const startHttpPolling = () => {
         batchErrorCount.value = res.data.batch_error_count || 0
         const fres = res.data.results || {}
         Object.entries(fres).forEach(([k, v]: [string, any]) => {
-          resultMap.value[parseInt(k)] = v
-          imageCategories.value[parseInt(k)] = v.image_type || imageCategories.value[parseInt(k)] || '其他'
+          const idx = parseInt(k)
+          resultMap.value[idx] = v
+          statusMap.value = { ...statusMap.value, [idx]: v._error ? 'error' : 'done' }
+          imageCategories.value[idx] = v.image_type || imageCategories.value[idx] || '其他'
         })
         updateCategoryStats()
         analyzedCount.value = Object.keys(resultMap.value).length
@@ -552,6 +619,7 @@ const resetTask = () => {
   selectedImg.value = null
   selectedImage.value = null
   analyzedCount.value = 0
+  statusMap.value = {}
   fetchTasks()
 }
 
@@ -581,6 +649,12 @@ const loadTask = async (tid: string) => {
   } catch (err: any) {
     ElMessage.error(err.message || '加载失败')
   }
+}
+
+const exportPdf = () => {
+  if (!taskId.value) return
+  const baseUrl = axios.defaults.baseURL || ''
+  window.open(`${baseUrl}/api/docx/report/${taskId.value}/html`, '_blank')
 }
 
 const removeTask = async (tid: string) => {
@@ -683,6 +757,32 @@ onUnmounted(() => {
 .card-badge { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; background: #22c55e; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; }
 .card-badge.card-badge-error { background: #ef4444; }
 
+.card-status {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.75); z-index: 5;
+}
+.status-spinner {
+  width: 24px; height: 24px; border: 3px solid #e0e7ff;
+  border-top-color: #6366f1; border-radius: 50%; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.card-status-dot {
+  position: absolute; top: 6px; left: 6px; width: 8px; height: 8px;
+  border-radius: 50%; z-index: 2;
+}
+.dot-waiting { background: #cbd5e1; }
+.dot-analyzing { background: #6366f1; animation: pulse-dot .8s ease-in-out infinite; }
+.dot-done { background: #22c55e; }
+.dot-error { background: #ef4444; }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+
+.image-card.status-analyzing { border-color: #6366f1; box-shadow: 0 0 0 1px rgba(99,102,241,.3); }
+.image-card.status-error { border-color: #fecaca; }
+
 .detail-panel {
   width: 400px; flex-shrink: 0; background: white; border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow-y: auto; max-height: 600px;
@@ -716,9 +816,19 @@ onUnmounted(() => {
 .spec-item { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0; font-size: 12px; color: #475569; }
 
 .batch-summary { background: white; border-radius: 12px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
-.summary-header { display: flex; align-items: center; gap: 10px; color: #6366f1; margin-bottom: 14px; }
+.summary-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #6366f1; margin-bottom: 14px; }
+.summary-header-left { display: flex; align-items: center; gap: 10px; }
 .summary-header h3 { font-size: 16px; color: #1e293b; }
 .summary-content { font-size: 14px; line-height: 1.9; color: #334155; }
+.summary-content :deep(h1) { font-size: 20px; margin: 16px 0 8px; }
+.summary-content :deep(h2) { font-size: 17px; margin: 14px 0 6px; color: #1e293b; }
+.summary-content :deep(h3) { font-size: 15px; margin: 12px 0 6px; color: #334155; }
+.summary-content :deep(table) { border-collapse: collapse; width: 100%; margin: 10px 0; }
+.summary-content :deep(th), .summary-content :deep(td) { border: 1px solid #e2e8f0; padding: 6px 12px; text-align: left; font-size: 13px; }
+.summary-content :deep(th) { background: #f8fafc; font-weight: 600; }
+.summary-content :deep(blockquote) { border-left: 3px solid #6366f1; padding: 4px 12px; color: #64748b; margin: 10px 0; }
+.summary-content :deep(strong) { color: #1e293b; }
+.summary-content :deep(hr) { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
 
 .category-summary { background: white; border-radius: 12px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 .category-summary h4 { font-size: 13px; margin-bottom: 10px; color: #475569; }

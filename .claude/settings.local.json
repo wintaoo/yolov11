@@ -23,7 +23,9 @@
       "Bash(powershell -Command ' *)",
       "Bash(git rm *)",
       "WebSearch",
-      "Bash(venv/Scripts/python -c ' *)"
+      "Bash(venv/Scripts/python -c ' *)",
+      "Bash(npm install *)",
+      "Bash(npx vite *)"
     ]
   }
 }
