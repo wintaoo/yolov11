@@ -25,7 +25,9 @@
       "WebSearch",
       "Bash(venv/Scripts/python -c ' *)",
       "Bash(npm install *)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(venv/Scripts/python scripts/update_docx.py)",
+      "Bash(venv/Scripts/python)"
     ]
   }
 }

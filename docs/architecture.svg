@@ -1,0 +1,226 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 780" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif">
+  <defs>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#3730a3"/>
+    </linearGradient>
+    <linearGradient id="frontend" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="backend" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0891b2"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="services" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="data" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#d97706"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <linearGradient id="external" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#dc2626"/>
+      <stop offset="100%" stop-color="#ef4444"/>
+    </linearGradient>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="780" fill="#f1f5f9" rx="12"/>
+
+  <!-- Title bar -->
+  <rect x="0" y="0" width="1000" height="52" fill="url(#header)" rx="12"/>
+  <rect x="0" y="30" width="1000" height="22" fill="url(#header)"/>
+  <text x="500" y="34" text-anchor="middle" fill="white" font-size="18" font-weight="700">建筑图纸分析系统 — 系统架构图 v2.0</text>
+
+  <!-- ============================================================ -->
+  <!-- Layer 1: Frontend -->
+  <!-- ============================================================ -->
+  <rect x="30" y="70" width="940" height="130" rx="8" fill="white" stroke="#c7d2fe" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="30" y="70" width="940" height="30" rx="8" fill="url(#frontend)"/>
+  <rect x="30" y="88" width="940" height="12" fill="url(#frontend)"/>
+  <text x="60" y="90" fill="white" font-size="13" font-weight="700">浏览器前端  Vue 3 + Element Plus + Vite  端口 :8080</text>
+
+  <!-- App.vue -->
+  <rect x="55" y="110" width="130" height="36" rx="6" fill="#eef2ff" stroke="#818cf8" stroke-width="1"/>
+  <text x="120" y="133" text-anchor="middle" fill="#4338ca" font-size="11" font-weight="600">App.vue</text>
+  <text x="120" y="122" text-anchor="middle" fill="#6366f1" font-size="9">AI免责声明 · Tab切换</text>
+
+  <!-- DetectionPanel -->
+  <rect x="205" y="110" width="195" height="80" rx="6" fill="#eef2ff" stroke="#818cf8" stroke-width="1"/>
+  <text x="302" y="130" text-anchor="middle" fill="#4338ca" font-size="11" font-weight="600">DetectionPanel.vue</text>
+  <text x="302" y="145" text-anchor="middle" fill="#6366f1" font-size="9">工具栏 · 对比视图</text>
+  <text x="302" y="160" text-anchor="middle" fill="#6366f1" font-size="9">胶片导航 · 检测列表 · 导出</text>
+  <text x="302" y="178" text-anchor="middle" fill="#818cf8" font-size="9">RulesCheckResult（12条规范）</text>
+
+  <!-- DocumentAnalysis -->
+  <rect x="420" y="110" width="525" height="80" rx="6" fill="#eef2ff" stroke="#818cf8" stroke-width="1"/>
+  <text x="682" y="130" text-anchor="middle" fill="#4338ca" font-size="11" font-weight="600">DocumentAnalysis.vue（核心组件）</text>
+  <text x="682" y="147" text-anchor="middle" fill="#6366f1" font-size="9">上传区(历史任务) · 状态栏(已分析/待分析) · 异常横幅 · 进度条</text>
+  <text x="682" y="162" text-anchor="middle" fill="#6366f1" font-size="9">图片网格(队列状态:灰/紫脉冲/绿/红) · 详情面板 · AI结果展示</text>
+  <text x="682" y="177" text-anchor="middle" fill="#818cf8" font-size="9">Marked渲染汇总报告 · 分类统计 · 导出PDF按钮</text>
+
+  <!-- ============================================================ -->
+  <!-- Arrow Frontend -> Backend -->
+  <!-- ============================================================ -->
+  <line x1="500" y1="200" x2="500" y2="230" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="510" y="220" fill="#64748b" font-size="9">HTTP REST + SSE</text>
+
+  <!-- ============================================================ -->
+  <!-- Layer 2: Flask Backend -->
+  <!-- ============================================================ -->
+  <rect x="30" y="235" width="940" height="175" rx="8" fill="white" stroke="#a5f3fc" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="30" y="235" width="940" height="30" rx="8" fill="url(#backend)"/>
+  <rect x="30" y="253" width="940" height="12" fill="url(#backend)"/>
+  <text x="60" y="255" fill="white" font-size="13" font-weight="700">Flask 后端服务  端口 :5000   Blueprint 路由</text>
+
+  <!-- detection.py -->
+  <rect x="55" y="275" width="200" height="60" rx="6" fill="#ecfeff" stroke="#22d3ee" stroke-width="1"/>
+  <text x="155" y="295" text-anchor="middle" fill="#0e7490" font-size="11" font-weight="700">detection.py</text>
+  <text x="155" y="312" text-anchor="middle" fill="#0891b2" font-size="9">POST /api/detection/detect</text>
+  <text x="155" y="326" text-anchor="middle" fill="#0891b2" font-size="9">GET /api/detection/model/status</text>
+
+  <!-- docx.py -->
+  <rect x="275" y="275" width="240" height="85" rx="6" fill="#ecfeff" stroke="#22d3ee" stroke-width="1"/>
+  <text x="395" y="293" text-anchor="middle" fill="#0e7490" font-size="11" font-weight="700">docx.py（12端点）</text>
+  <text x="395" y="309" text-anchor="middle" fill="#0891b2" font-size="9">POST /upload /analyze /analyze-single</text>
+  <text x="395" y="322" text-anchor="middle" fill="#0891b2" font-size="9">GET /status /status/stream /image</text>
+  <text x="395" y="335" text-anchor="middle" fill="#0891b2" font-size="9">GET /report/html /tasks</text>
+  <text x="395" y="348" text-anchor="middle" fill="#0891b2" font-size="9">POST /task/load  DELETE /task</text>
+
+  <!-- main.py -->
+  <rect x="535" y="275" width="200" height="40" rx="6" fill="#ecfeff" stroke="#22d3ee" stroke-width="1"/>
+  <text x="635" y="293" text-anchor="middle" fill="#0e7490" font-size="11" font-weight="700">main.py</text>
+  <text x="635" y="308" text-anchor="middle" fill="#0891b2" font-size="9">/check-rules /models /network_check</text>
+
+  <!-- SSE + Progress -->
+  <rect x="755" y="275" width="190" height="55" rx="6" fill="#cffafe" stroke="#22d3ee" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="850" y="295" text-anchor="middle" fill="#0e7490" font-size="10" font-weight="700">实时推送</text>
+  <text x="850" y="310" text-anchor="middle" fill="#0891b2" font-size="8">SSE events: analyzing →</text>
+  <text x="850" y="322" text-anchor="middle" fill="#0891b2" font-size="8">progress → summarizing → done</text>
+
+  <!-- Batch Analysis Thread -->
+  <rect x="55" y="345" width="400" height="52" rx="6" fill="#cffafe" stroke="#22d3ee" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="255" y="363" text-anchor="middle" fill="#0e7490" font-size="10" font-weight="700">批量分析后台线程 (run_batch)</text>
+  <text x="255" y="378" text-anchor="middle" fill="#0891b2" font-size="8">筛选待处理图片(跳过已完成) → ThreadPoolExecutor → SSE推送进度</text>
+  <text x="255" y="391" text-anchor="middle" fill="#0891b2" font-size="8">并发 = min(Key数×Model数, 待处理数)</text>
+
+  <!-- ============================================================ -->
+  <!-- Arrow Backend -> Services -->
+  <!-- ============================================================ -->
+  <line x1="500" y1="410" x2="500" y2="440" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ============================================================ -->
+  <!-- Layer 3: Services -->
+  <!-- ============================================================ -->
+  <rect x="30" y="445" width="940" height="130" rx="8" fill="white" stroke="#a7f3d0" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="30" y="445" width="940" height="28" rx="8" fill="url(#services)"/>
+  <rect x="30" y="461" width="940" height="12" fill="url(#services)"/>
+  <text x="60" y="464" fill="white" font-size="13" font-weight="700">Services 业务逻辑层</text>
+
+  <!-- detection service -->
+  <rect x="55" y="485" width="160" height="50" rx="6" fill="#ecfdf5" stroke="#34d399" stroke-width="1"/>
+  <text x="135" y="503" text-anchor="middle" fill="#047857" font-size="10" font-weight="700">detection.py</text>
+  <text x="135" y="518" text-anchor="middle" fill="#059669" font-size="8">YOLOv11 推理</text>
+  <text x="135" y="530" text-anchor="middle" fill="#059669" font-size="8">模型切换 · 结果解析</text>
+
+  <!-- rules_checker -->
+  <rect x="230" y="485" width="165" height="50" rx="6" fill="#ecfdf5" stroke="#34d399" stroke-width="1"/>
+  <text x="312" y="503" text-anchor="middle" fill="#047857" font-size="10" font-weight="700">rules_checker.py</text>
+  <text x="312" y="518" text-anchor="middle" fill="#059669" font-size="8">12条Shapely几何规则</text>
+  <text x="312" y="530" text-anchor="middle" fill="#059669" font-size="8">点/多边形包含 · 距离计算</text>
+
+  <!-- docx_service -->
+  <rect x="410" y="485" width="170" height="50" rx="6" fill="#ecfdf5" stroke="#34d399" stroke-width="1"/>
+  <text x="495" y="503" text-anchor="middle" fill="#047857" font-size="10" font-weight="700">docx_service.py</text>
+  <text x="495" y="518" text-anchor="middle" fill="#059669" font-size="8">OPC图片提取 · 上下文匹配</text>
+  <text x="495" y="530" text-anchor="middle" fill="#059669" font-size="8">图片压缩(2048px/JPEG85)</text>
+
+  <!-- ai_analysis_service (larger, more important) -->
+  <rect x="595" y="478" width="200" height="63" rx="6" fill="#d1fae5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="695" y="496" text-anchor="middle" fill="#047857" font-size="10" font-weight="700">ai_analysis_service.py</text>
+  <text x="695" y="511" text-anchor="middle" fill="#059669" font-size="8">SiliconFlow API调用</text>
+  <text x="695" y="523" text-anchor="middle" fill="#059669" font-size="8">多Key轮换 · 多模型切换</text>
+  <text x="695" y="535" text-anchor="middle" fill="#059669" font-size="8">JSON解析容错 · Fallback降级</text>
+
+  <!-- ai_cache -->
+  <rect x="810" y="483" width="135" height="50" rx="6" fill="#ecfdf5" stroke="#34d399" stroke-width="1"/>
+  <text x="877" y="501" text-anchor="middle" fill="#047857" font-size="10" font-weight="700">ai_cache.py</text>
+  <text x="877" y="516" text-anchor="middle" fill="#059669" font-size="8">MD5缓存</text>
+  <text x="877" y="528" text-anchor="middle" fill="#059669" font-size="8">跨文档复用</text>
+
+  <!-- task_service (below, spanning) -->
+  <rect x="55" y="545" width="890" height="26" rx="5" fill="#d1fae5" stroke="#10b981" stroke-width="1"/>
+  <text x="500" y="563" text-anchor="middle" fill="#047857" font-size="9" font-weight="600">task_service.py — 任务CRUD · JSON持久化 · Markdown报告生成 · 汇总报告(_build_fallback_summary)</text>
+
+  <!-- ============================================================ -->
+  <!-- Arrow Services -> Data -->
+  <!-- ============================================================ -->
+  <line x1="500" y1="575" x2="500" y2="600" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ============================================================ -->
+  <!-- Layer 4: Data -->
+  <!-- ============================================================ -->
+  <rect x="30" y="605" width="940" height="70" rx="8" fill="white" stroke="#fde68a" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="30" y="605" width="940" height="26" rx="8" fill="url(#data)"/>
+  <rect x="30" y="619" width="940" height="12" fill="url(#data)"/>
+  <text x="60" y="622" fill="white" font-size="12" font-weight="700">Data 数据层</text>
+
+  <rect x="55" y="638" width="210" height="28" rx="5" fill="#fffbeb" stroke="#f59e0b" stroke-width="1"/>
+  <text x="160" y="657" text-anchor="middle" fill="#92400e" font-size="9">tasks/{id}/  task.json · results.json</text>
+
+  <rect x="280" y="638" width="175" height="28" rx="5" fill="#fffbeb" stroke="#f59e0b" stroke-width="1"/>
+  <text x="367" y="657" text-anchor="middle" fill="#92400e" font-size="9">cache_ai/  MD5图片缓存</text>
+
+  <rect x="470" y="638" width="160" height="28" rx="5" fill="#fffbeb" stroke="#f59e0b" stroke-width="1"/>
+  <text x="550" y="657" text-anchor="middle" fill="#92400e" font-size="9">models/  YOLO .pt模型</text>
+
+  <rect x="645" y="638" width="150" height="28" rx="5" fill="#fffbeb" stroke="#f59e0b" stroke-width="1"/>
+  <text x="720" y="657" text-anchor="middle" fill="#92400e" font-size="9">uploads/  临时上传</text>
+
+  <rect x="810" y="638" width="135" height="28" rx="5" fill="#fffbeb" stroke="#f59e0b" stroke-width="1"/>
+  <text x="877" y="657" text-anchor="middle" fill="#92400e" font-size="9">.env  配置密钥</text>
+
+  <!-- ============================================================ -->
+  <!-- Arrow Data -> External -->
+  <!-- ============================================================ -->
+  <line x1="500" y1="675" x2="500" y2="705" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ============================================================ -->
+  <!-- Layer 5: External -->
+  <!-- ============================================================ -->
+  <rect x="180" y="710" width="640" height="58" rx="8" fill="white" stroke="#fecaca" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="180" y="710" width="640" height="26" rx="8" fill="url(#external)"/>
+  <rect x="180" y="724" width="640" height="12" fill="url(#external)"/>
+  <text x="500" y="728" fill="white" font-size="12" font-weight="700">External 外部服务 — SiliconFlow API (api.siliconflow.cn)</text>
+
+  <rect x="205" y="740" width="190" height="22" rx="4" fill="#fef2f2" stroke="#f87171" stroke-width="1"/>
+  <text x="300" y="755" text-anchor="middle" fill="#991b1b" font-size="9">GLM-4.6V（主视觉）</text>
+
+  <rect x="410" y="740" width="170" height="22" rx="4" fill="#fef2f2" stroke="#f87171" stroke-width="1"/>
+  <text x="495" y="755" text-anchor="middle" fill="#991b1b" font-size="9">GLM-4.5V（备视觉）</text>
+
+  <rect x="595" y="740" width="200" height="22" rx="4" fill="#fef2f2" stroke="#f87171" stroke-width="1"/>
+  <text x="695" y="755" text-anchor="middle" fill="#991b1b" font-size="9">Qwen2.5-7B-Instruct（汇总）</text>
+
+  <!-- ============================================================ -->
+  <!-- Legend -->
+  <!-- ============================================================ -->
+  <rect x="30" y="70" width="160" height="52" rx="6" fill="white" stroke="#e2e8f0" stroke-width="1" transform="translate(810,0)"/>
+  <text x="890" y="88" text-anchor="middle" fill="#64748b" font-size="8" font-weight="700">图例</text>
+  <rect x="822" y="95" width="14" height="10" rx="2" fill="#eef2ff" stroke="#818cf8" stroke-width="1"/>
+  <text x="842" y="104" fill="#64748b" font-size="7">组件</text>
+  <rect x="890" y="95" width="14" height="10" rx="2" fill="#ecfdf5" stroke="#34d399" stroke-width="1"/>
+  <text x="910" y="104" fill="#64748b" font-size="7">服务</text>
+  <rect x="822" y="110" width="14" height="10" rx="2" fill="#cffafe" stroke="#22d3ee" stroke-width="1" stroke-dasharray="3,2"/>
+  <text x="842" y="119" fill="#64748b" font-size="7">后台线程</text>
+  <rect x="890" y="110" width="14" height="10" rx="2" fill="#fffbeb" stroke="#f59e0b" stroke-width="1"/>
+  <text x="910" y="119" fill="#64748b" font-size="7">数据</text>
+</svg>

@@ -1,214 +1,163 @@
 # 系统设计文档
 
-## 1. 系统概述
+## 一、系统概述
 
-建筑图纸分析系统是一个面向施工招投标场景的智能分析平台，主要用于自动化检测施工平面布置图中的设施与元素，检查施工规范合规性，并对 Word 格式的施工方案文档中的图纸进行多模态 AI 分析。
+建筑图纸分析系统服务于海南机器管招投标项目，核心目标是对施工方案文档中的图纸进行自动化审查。
 
-**应用场景**：海南机器管招投标项目 — 施工方案评审与图纸合规性检查。
+系统分为两条处理管线：
+- **图片检测管线**: 单张图片 → YOLO 目标检测 → 施工规范检查 → 可视化标注
+- **文档分析管线**: .docx 文档 → 提取图片 → 多模态 AI 分析 → 分类+评估 → 汇总报告
 
-## 2. 系统架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     浏览器前端 (Vue 3)                       │
-│  DetectionPanel │ DocumentAnalysis │ RulesCheckResult      │
-│  Element Plus UI  │  Axios HTTP Client                     │
-└──────────────────────┬──────────────────────────────────────┘
-                       │ HTTP REST API
-┌──────────────────────┴──────────────────────────────────────┐
-│                    Flask 后端服务 (:5000)                     │
-│                                                             │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │ detection.py │  │   docx.py    │  │   main.py       │  │
-│  │ /api/detect  │  │ /api/docx/*  │  │ /api/detection/ │  │
-│  │ /api/analyze │  │              │  │ /api/check-rules│  │
-│  └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘  │
-│         │                 │                    │            │
-│  ┌──────┴─────────────────┴────────────────────┴─────────┐  │
-│  │                   Services Layer                       │  │
-│  │  ┌──────────────┐  ┌───────────────┐  ┌────────────┐  │  │
-│  │  │ detection.py │  │rules_checker  │  │docx_service │  │  │
-│  │  │ (YOLO推理)   │  │ (Shapely几何) │  │ (OPC解析)   │  │  │
-│  │  └──────────────┘  └───────────────┘  └────────────┘  │  │
-│  │  ┌──────────────────────────────────────────────┐     │  │
-│  │  │      ai_analysis_service.py                   │     │  │
-│  │  │      (SiliconFlow GLM-4.6V / Qwen2.5)        │     │  │
-│  │  └──────────────────────────────────────────────┘     │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                                                             │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │                    Data Layer                          │  │
-│  │  models/ │ uploads/ │ docx_images/ │ .env (secrets)    │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   External Services                          │
-│         SiliconFlow API (GLM-4.6V / Qwen2.5-7B)            │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 3. 核心模块设计
-
-### 3.1 图片检测模块 (Detection)
-
-**入口**: `POST /api/detection/detect`
-
-**流程**:
-```
-上传图片 → YOLO 模型推理 → 结果解析 (坐标/类别/置信度) → 规则检查 → JSON 响应
-```
-
-**关键类**:
-
-- `DetectionService` (单例模式，[detection.py](file:///c:/Users/wint/Desktop/yolov11/backend/app/services/detection.py))
-  - `load_model()`: 加载 YOLO 模型
-  - `process_image()`: 图片预处理 + 推理 + 后处理
-  - `switch_model()`: 运行时切换模型文件
-  - `get_model_status()`: 获取模型加载状态
-
-- `RulesChecker` ([rules_checker.py](file:///c:/Users/wint/Desktop/yolov11/backend/app/services/rules_checker.py))
-  - 基于规则的施工规范检查引擎
-  - 使用 Shapely 进行几何空间关系计算 (点/多边形包含、距离等)
-  - 支持规则: 钢筋加工场设置、塔吊覆盖范围、大门道路连通、消防设施等
-
-**检测类别 (12类)**:
-起重机、塔吊、挖掘机、搅拌机、钢筋加工厂、宿舍、办公室、厕所、大门、红线、道路、楼梯
-
-### 3.2 文档分析模块 (Document Analysis)
-
-**入口**: `POST /api/docx/upload` → `POST /api/docx/analyze`
-
-**流程**:
-```
-上传 .docx → python-docx OPC 解析 → 提取内嵌图片 → 
-猜测分类(关键词匹配) → GLM-4.6V 多模态分析 → 
-Qwen2.5-7B 生成汇总报告
-```
-
-**关键类**:
-
-- `extract_images_from_docx()` ([docx_service.py](file:///c:/Users/wint/Desktop/yolov11/backend/app/services/docx_service.py))
-  - 通过 OPC Relationships 方式提取文档内嵌图片 (不走 XML 解析)
-  - 提取图片上下文文字 (前后段落)
-  - `guess_category_from_context()`: 关键词匹配初分类
-
-- `analyze_image_with_ai()` ([ai_analysis_service.py](file:///c:/Users/wint/Desktop/yolov11/backend/app/services/ai_analysis_service.py))
-  - Base64 编码图片 → SiliconFlow GLM-4.6V API
-  - 结构化 JSON 输出: 类型/摘要/评价/设施/工期/尺寸
-  - 13 种图纸类型识别
-
-- `generate_summary()` ([docx.py](file:///c:/Users/wint/Desktop/yolov11/backend/app/api/docx.py))
-  - 汇总所有单图分析结果
-  - 调用 Qwen2.5-7B-Instruct 生成结构化报告
-
-### 3.3 API 路由设计
-
-| 蓝图 | 前缀 | 说明 |
-|------|------|------|
-| `detection_bp` | `/api/detection/` | 检测、模型切换、规则检查 |
-| `docx_bp` | `/api/docx/` | 文档上传、分析、图片服务 |
-| `api_bp` | `/api/` | 模型信息查询 |
-| `main_bp` | `/` | 系统状态、网络检查 |
-
-详见 [API 文档](./API.md)
-
-## 4. 数据流设计
-
-### 4.1 检测流程数据流
+## 二、架构设计
 
 ```
-Image File (multipart/form-data)
-  → Flask request.files
-    → tempfile 暂存
-      → YOLO model(input_tensor) → [detections]
-        → post_process: 坐标归一化 + 中文类别映射
-          → RulesChecker.check(detections) → [rule_results]
-            → JSON Response {detections, class_counts, rule_check}
+┌──────────────────────────────────────────────────┐
+│                   前端 (Vue 3)                     │
+│  DetectionPanel.vue  │  DocumentAnalysis.vue      │
+│  图片检测 + 规范检查   │  文档分析 + 批量进度 + 报告  │
+└──────────────┬───────────────────────────────────┘
+               │ HTTP / SSE
+┌──────────────▼───────────────────────────────────┐
+│              后端 (Flask)                          │
+│  ┌─────────────┐  ┌──────────────────────┐       │
+│  │ detection   │  │ docx (Blueprint)      │       │
+│  │ /api/detect │  │ /api/docx/*           │       │
+│  └──────┬──────┘  └────────┬─────────────┘       │
+│         │                  │                      │
+│  ┌──────▼──────┐  ┌───────▼──────────────┐       │
+│  │ detection   │  │ ai_analysis_service  │       │
+│  │ (YOLO)      │  │ (SiliconFlow API)    │       │
+│  └──────┬──────┘  └───────┬──────────────┘       │
+│         │                  │                      │
+│  ┌──────▼──────┐  ┌───────▼──────────────┐       │
+│  │ rules_      │  │ task_service         │       │
+│  │ checker     │  │ (JSON 持久化)         │       │
+│  └─────────────┘  └──────────────────────┘       │
+└──────────────────────────────────────────────────┘
 ```
 
-### 4.2 文档分析数据流
+## 三、文档分析管线详解
 
+### 3.1 图片提取
+`docx_service.py:extract_images_from_docx()`
+
+1. 用 `python-docx` 解析 .docx，遍历 `document.part.rels` 提取所有图片
+2. 提取图片的文档上下文（所在段落前后文字）
+3. 基于关键词匹配预分类 (`guess_category_from_context`)
+4. 输出: `{total, images[{index, filepath, context, guessed_category}]}`
+
+### 3.2 AI 分析
+`ai_analysis_service.py:analyze_image_with_ai()`
+
+**请求策略**:
+1. 图片压缩: 长边 max 2048px, JPEG Q=85 → base64
+2. 候选列表: [压缩图] + [原图（仅 ≤5MB）]
+3. Key + Model 随机选择 → SiliconFlow Chat Completions API
+4. 每候选最多 2 次尝试（`MAX_RETRIES_PER_CANDIDATE=1`）
+5. 超时: 视觉 75s, Thinking 120s
+6. 失败降级: HTTP 403 → 拉黑 Key+Model; Timeout → 切换候选; 均失败 → fallback
+
+**缓存机制** (`ai_cache.py`):
+- 图片 MD5 作为 key，结果 JSON 序列化到 `backend/cache_ai/`
+- 同图跨文档复用，避免重复 API 调用
+- 仅缓存成功结果，失败（含 `_error`）不缓存
+
+**JSON 解析与容错**:
+1. 括号匹配提取 JSON 块
+2. 多轮修复: 去尾逗号、补全括号
+3. 失败降级: 关键词匹配分类 → `_build_fallback()`
+
+**结果结构**:
+```json
+{
+  "image_type": "总平面布置图",
+  "summary": "200-400字摘要",
+  "evaluation": "分维度评估，含总体评价等级（优/良/中/差）",
+  "has_drawing": true,
+  "elements": {"recognized_items": [], "facilities": {}},
+  "construction_schedule": {"has_schedule": false},
+  "dimensions_specs": {"found": false}
+}
 ```
-.docx File (multipart/form-data)
-  → flask.save() → docx_service.extract_images()
-    → [image_files] + [context_texts]
-      → guess_category_from_context() → category_guess_stats
-        ← (前端轮询) GET /status → {progress, results}
-      → 异步线程: GLM-4.6V analysis → batch_results
-        → Qwen2.5-7B summary generation → batch_summary
+
+### 3.3 批量分析
+`docx.py:analyze_batch()`
+
+1. 筛选待处理图片: 无结果或 `_error` 的加入队列，已成功的保留
+2. `ThreadPoolExecutor` 并发分析，并发数 = `min(Key数 × 模型数, 待处理数)`
+3. 每张图完成后通过 SSE push `progress` 事件
+4. 全部完成后生成汇总报告
+
+### 3.4 汇总报告
+`docx.py:generate_summary()`
+
+**两级策略**:
+1. **数据驱动报告**（`_build_fallback_summary`）: 100% 准确
+   - 类型分布统计、评级分布统计
+   - 各图片评估详情
+   - 关键施工参数汇总（尺寸规格、工期等）
+2. **AI 补充评审**（可选）: 调用文本模型生成简短评审意见
+   - 失败不影响主报告
+
+### 3.5 SSE 进度推送
+`docx.py:get_status_stream()`
+
+- 事件类型: `analyzing` → `progress` → `summarizing` → `done`
+- 连接断开自动降级 HTTP 轮询 (`get_status()`)
+- 重连时发送 `snapshot` 快照恢复状态
+
+## 四、模型配置
+
+| 配置变量 | 用途 | 当前值 |
+|----------|------|--------|
+| `SILICONFLOW_VISION_MODEL` | 主视觉模型 | `zai-org/GLM-4.6V` |
+| `SILICONFLOW_VISION_MODELS` | 备选视觉模型 | `zai-org/GLM-4.5V` |
+| `SILICONFLOW_SUMMARY_MODEL` | 汇总文本模型 | `Qwen/Qwen2.5-7B-Instruct` |
+| `SILICONFLOW_API_KEYS` | API 密钥列表 | 5 个 Key |
+
+5 Key × 2 Model = 最大并发 10 线程。
+
+## 五、数据持久化
+
+任务数据以 JSON 文件存储，目录结构:
+```
+backend/tasks/{task_id}/
+├── task.json          # 元数据（文件名、状态、图片列表）
+├── results.json       # 分析结果 {图片编号: 结果对象}
+├── summary.md         # 汇总报告
+├── analysis_report.md # 可读报告
+└── images/            # 提取的图片
 ```
 
-## 5. 前端架构
+## 六、前端架构
 
-### 5.1 组件树
-
+### 组件树
 ```
 App.vue
-├── 顶部导航栏 (模型状态、品牌标识)
-├── Tab 切换 (图片检测 | 文档分析)
+├── 免责声明条 (ai-disclaimer)
+├── Tab 切换 (图片检测 / 文档分析)
 ├── DetectionPanel.vue
-│   ├── 工具栏 (模式切换、导航)
-│   ├── 画布区 (原图 / 检测结果 / 对比视图)
-│   ├── 胶片导航 (缩略图列表)
-│   └── 侧边栏 (检测统计、规则检查结果)
+│   ├── 工具栏 (文件夹选择 / 导航 / 清除)
+│   ├── 对比视图 (原图 vs 检测结果)
+│   ├── 胶片导航
+│   └── 侧栏 (检测按钮 / 统计 / 列表 / 规范检查)
 └── DocumentAnalysis.vue
-    ├── 上传区域 (Hero 样式)
-    ├── 状态栏 (任务ID、批量分析按钮)
-    ├── 图片网格 (可点击卡片)
-    ├── 详情面板 (图片预览、AI分析结果)
-    ├── 智能汇总报告
-    └── 图片分类统计
+    ├── 上传区 (历史任务列表 / 上传卡片)
+    └── 分析区
+        ├── 状态栏 (任务ID / 图片数 / 已分析 / 待分析)
+        ├── 进度条
+        ├── 异常横幅
+        ├── 图片网格 (含队列状态指示)
+        ├── 详情面板 (预览 / 分析按钮 / AI 结果)
+        ├── 汇总报告 (Markdown 渲染 + 导出PDF)
+        └── 分类统计
 ```
 
-### 5.2 关键交互
-
-- **图片检测**: 切换图片自动触发检测 (无需点击)
-- **对比视图**: 拖拽滑块查看原图 vs 检测结果
-- **文档分析**: 支持单张分析和批量分析两种模式
-- **分类统计**: 基于 `imageCategories` 映射表 统计全部图片
-
-## 6. 安全设计
-
-| 措施 | 说明 |
-|------|------|
-| 环境变量 | API Key 通过 `.env` 管理，不入版本控制 |
-| 文件隔离 | 每次上传生成独立 `task_id` 目录 |
-| 用户认证 | `require_auth` 装饰器 (默认关闭) |
-| CORS | Flask-CORS 白名单限制 |
-| 文件大小 | `MAX_CONTENT_LENGTH = 200MB` |
-| 日志脱敏 | API Key 不输出到日志 |
-
-## 7. 部署说明
-
-### 开发环境
-
-```bash
-# 后端 (Flask dev server)
-cd backend && python run.py
-# 前端 (Vite dev server)
-cd frontend && npm run dev
-```
-
-### 生产环境建议
-
-```bash
-# 后端: Gunicorn (已在 requirements.txt)
-cd backend && gunicorn -w 4 -b 0.0.0.0:5000 run:app
-
-# 前端: Nginx 静态文件服务
-cd frontend && npm run build
-# 将 dist/ 部署到 Nginx
-```
-
-## 8. 性能考量
-
-| 环节 | 策略 |
-|------|------|
-| YOLO 模型 | 单例模式预加载，避免重复 IO |
-| 大图检测 | 长边限制到 1920px |
-| .docx 解析 | 惰性上下文提取，避免全文遍历 |
-| AI 分析 | 异步线程处理，前端轮询进度 |
-| 前端渲染 | Virtual scroll 思想 (grid lazy load) |
-| 大 PNG (100MB+) | docx 内压缩，但提取仍耗时 |
+### 关键状态
+| 状态 | 类型 | 说明 |
+|------|------|------|
+| `statusMap` | `Record<number, string>` | 每张图状态: waiting/analyzing/done/error |
+| `resultMap` | `Record<number, any>` | 每张图的 AI 分析结果 |
+| `batchRunning` | `boolean` | 批量分析进行中 |
+| `batchPercent` | `number` | 进度百分比（仅算待处理数） |
+| `batchSummary` | `string` | Markdown 汇总报告 |

@@ -135,13 +135,26 @@ yolov11/
 
 | 变量 | 说明 | 必需 |
 |------|------|:---:|
-| `SILICONFLOW_API_KEY` | 硅基流动 API 密钥 | ✅ |
+| `SILICONFLOW_API_KEYS` | API 密钥列表（逗号分隔，支持多 Key 轮换） | ✅ |
 | `SILICONFLOW_API_URL` | API 端点地址 | - |
-| `SILICONFLOW_VISION_MODEL` | 视觉模型名称 | - |
+| `SILICONFLOW_VISION_MODEL` | 主视觉模型 | - |
+| `SILICONFLOW_VISION_MODELS` | 备选视觉模型（逗号分隔） | - |
+| `SILICONFLOW_SUMMARY_MODEL` | 汇总用文本模型 | - |
+| `IMAGE_COMPRESSION_ENABLED` | 图片压缩开关 | - |
+| `AI_CACHE_ENABLED` | AI 缓存开关 | - |
 | `SECRET_KEY` | Flask 密钥 | - |
 | `DEBUG` | 调试模式 | - |
 
 > 注册 SiliconFlow：https://siliconflow.cn
+
+## 近期更新
+
+- **汇总报告**: 数据驱动 + AI 补充，统计数据 100% 准确，不依赖 LLM 数字
+- **队列可视化**: 批量分析时每张图实时显示状态（等待/分析中/完成/异常）
+- **Markdown 渲染**: 汇总报告支持表格、标题层级等格式化展示
+- **一键导出 PDF**: 报告页面自动弹出打印对话框，支持另存为 PDF
+- **智能重试**: "继续批量分析"仅重试失败图片，已成功的跳过
+- **图片压缩**: 超大原图（>5MB）自动跳过，仅发送压缩版
 
 ## 开发指南
 
