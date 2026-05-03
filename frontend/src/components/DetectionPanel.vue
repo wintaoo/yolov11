@@ -453,7 +453,7 @@ onUnmounted(() => {
   box-shadow: 0 1px 3px rgba(0,0,0,.06); display: flex; flex-direction: column; gap: 10px;
 }
 .detect-btn { width: 100%; height: 44px; font-size: 15px; font-weight: 600; }
-.export-btn { width: 100%; }
+.export-btn { width: 100%; height: 44px; font-size: 15px; font-weight: 600; }
 
 .section-label {
   font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase;
