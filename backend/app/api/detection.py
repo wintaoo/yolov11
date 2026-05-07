@@ -84,6 +84,18 @@ def analyze():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@detection_bp.route('/model/status', methods=['GET'])
+def model_status():
+    """获取模型状态"""
+    try:
+        return jsonify(detection_service.get_model_status())
+    except Exception as e:
+        current_app.logger.error(f"获取模型状态失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @detection_bp.route('/switch-model', methods=['POST'])
 # @require_auth  # 暂时注释掉鉴权
 def switch_model():

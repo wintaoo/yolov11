@@ -45,5 +45,8 @@ backend/uploads/
 backend/docx_images/
 backend/tasks/
 
+# 后端动态端口
+backend/.port
+
 # 训练结果
 runs/
