@@ -7,6 +7,7 @@ import os
 import re
 import json
 import hashlib
+import shutil
 import queue
 import threading
 import logging
@@ -443,6 +444,71 @@ def get_status_stream(task_id):
             'Connection': 'keep-alive',
         }
     )
+
+
+@docx_bp.route('/save-images/<task_id>', methods=['POST'])
+def save_images(task_id):
+    """Copy selected extracted images to a user-specified folder."""
+    if task_id not in analysis_tasks:
+        try:
+            task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+            if not task_data:
+                return jsonify({'success': False, 'error': '任务不存在'})
+            analysis_tasks[task_id] = task_data
+        except Exception:
+            return jsonify({'success': False, 'error': '任务不存在'})
+
+    task = analysis_tasks[task_id]
+    data = request.get_json(silent=True) or {}
+    indices = data.get('indices', [])
+    target_folder = data.get('folder', '').strip()
+
+    if not indices:
+        return jsonify({'success': False, 'error': '未选择任何图片'})
+    if not target_folder:
+        return jsonify({'success': False, 'error': '未指定保存目录'})
+
+    # Create target folder if it doesn't exist
+    try:
+        os.makedirs(target_folder, exist_ok=True)
+    except OSError as e:
+        return jsonify({'success': False, 'error': f'无法创建目录: {str(e)}'})
+
+    images = task.get('images', [])
+    saved = []
+    failed = []
+
+    for idx in indices:
+        img = next((x for x in images if x['index'] == idx), None)
+        if not img:
+            failed.append({'index': idx, 'error': '图片信息不存在'})
+            continue
+
+        src = img.get('filepath', '')
+        if not src or not os.path.exists(src):
+            # Also try images dir
+            alt_src = os.path.join(_images_dir(task_id), img['filename'])
+            if os.path.exists(alt_src):
+                src = alt_src
+            else:
+                failed.append({'index': idx, 'filename': img['filename'], 'error': '源文件不存在'})
+                continue
+
+        dst = os.path.join(target_folder, img['filename'])
+        try:
+            shutil.copy2(src, dst)
+            saved.append({'index': idx, 'filename': img['filename'], 'dst': dst})
+        except OSError as e:
+            failed.append({'index': idx, 'filename': img['filename'], 'error': str(e)})
+
+    return jsonify({
+        'success': True,
+        'saved': saved,
+        'failed': failed,
+        'total': len(indices),
+        'saved_count': len(saved),
+        'target_folder': target_folder,
+    })
 
 
 @docx_bp.route('/image/<task_id>/<filename>', methods=['GET'])

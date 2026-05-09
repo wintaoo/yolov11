@@ -80,6 +80,28 @@
             {{ analyzedCount > 0 ? '继续批量分析' : '批量分析全部' }}
           </el-button>
           <el-button size="small" type="danger" plain @click="resetTask">返回列表</el-button>
+          <el-button size="small" type="success" plain @click="toggleSelectMode" v-if="images.length > 0">
+            <el-icon><Download /></el-icon>
+            {{ selectMode ? '取消保存' : '保存图片' }}
+          </el-button>
+        </div>
+      </div>
+
+      <div class="select-toolbar" v-if="selectMode">
+        <div class="select-toolbar-left">
+          <el-checkbox
+            :model-value="selectedIndices.size === images.length && images.length > 0"
+            :indeterminate="selectedIndices.size > 0 && selectedIndices.size < images.length"
+            @change="toggleSelectAll"
+          />
+          <span>已选 <strong>{{ selectedIndices.size }}</strong> / {{ images.length }} 张</span>
+        </div>
+        <div class="select-toolbar-right">
+          <el-button size="small" type="primary" @click="showSaveDialog = true" :disabled="selectedIndices.size === 0">
+            <el-icon><Download /></el-icon>
+            保存选中图片
+          </el-button>
+          <el-button size="small" @click="toggleSelectMode">取消</el-button>
         </div>
       </div>
 
@@ -111,10 +133,19 @@
               analyzed: resultMap[img.index] && !resultMap[img.index]._error,
               'status-analyzing': statusMap[img.index] === 'analyzing',
               'status-error': resultMap[img.index]?._error,
+              'select-mode-card': selectMode,
+              'select-checked': selectMode && selectedIndices.has(img.index),
             }"
-            @click="selectImage(img)"
+            @click="selectMode ? toggleImageSelect(img.index) : selectImage(img)"
           >
             <img :src="`/api/docx/image/${taskId}/${img.filename}`" class="card-img" loading="lazy" />
+            <div class="select-overlay" v-if="selectMode">
+              <el-checkbox
+                :model-value="selectedIndices.has(img.index)"
+                @click.stop
+                @change="toggleImageSelect(img.index)"
+              />
+            </div>
             <div class="card-info">
               <span class="card-idx">#{{ img.index }}</span>
               <span class="card-cat">{{ resultMap[img.index]?.image_type || img.guessed_category || '-' }}</span>
@@ -122,7 +153,7 @@
             <div class="card-status" v-if="statusMap[img.index] === 'analyzing'">
               <div class="status-spinner"></div>
             </div>
-            <div class="card-status-dot" :class="'dot-' + (statusMap[img.index] || 'waiting')"></div>
+            <div class="card-status-dot" v-if="!selectMode" :class="'dot-' + (statusMap[img.index] || 'waiting')"></div>
             <div class="card-badge" v-if="resultMap[img.index] && !resultMap[img.index]._error">
               <el-icon><Check /></el-icon>
             </div>
@@ -239,13 +270,42 @@
           </span>
         </div>
       </div>
+
+      <el-dialog v-model="showSaveDialog" title="保存图片到本地" width="480px" :close-on-click-modal="false">
+        <div style="margin-bottom: 16px;">
+          <p style="color: #64748b; font-size: 13px; margin-bottom: 10px;">
+            已选择 <strong style="color: #6366f1;">{{ selectedIndices.size }}</strong> 张图片
+          </p>
+          <p style="color: #475569; font-size: 13px; margin-bottom: 6px;">保存到目录：</p>
+          <div style="display: flex; gap: 8px;">
+            <el-input
+              v-model="saveFolder"
+              placeholder="例如：C:\Users\wint\Desktop\导出图片"
+              clearable
+              style="flex: 1;"
+            />
+            <el-button @click="pickFolder" :icon="FolderOpened" :loading="savingImages">
+              浏览
+            </el-button>
+          </div>
+          <p style="color: #94a3b8; font-size: 11px; margin-top: 4px;">
+            点击"浏览"选择文件夹，或手动输入目录路径
+          </p>
+        </div>
+        <template #footer>
+          <el-button @click="showSaveDialog = false">取消</el-button>
+          <el-button type="primary" @click="saveImages" :loading="savingImages" :disabled="!saveFolder.trim() || selectedIndices.size === 0">
+            保存图片
+          </el-button>
+        </template>
+      </el-dialog>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Upload, Picture, VideoPlay, Check, Trophy, Clock, FolderOpened, Delete, WarningFilled, Printer } from '@element-plus/icons-vue'
+import { Upload, Picture, VideoPlay, Check, Trophy, Clock, FolderOpened, Delete, WarningFilled, Printer, Download } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import { marked } from 'marked'
@@ -275,6 +335,11 @@ const pollTimer = ref<number | null>(null)
 const eventSource = ref<EventSource | null>(null)
 const taskList = ref<any[]>([])
 const statusMap = ref<Record<number, string>>({})
+const selectMode = ref(false)
+const selectedIndices = ref<Set<number>>(new Set())
+const showSaveDialog = ref(false)
+const saveFolder = ref('')
+const savingImages = ref(false)
 
 const selectedResult = computed(() => {
   if (!selectedImg.value) return null
@@ -670,6 +735,73 @@ const removeTask = async (tid: string) => {
   }
 }
 
+const toggleSelectMode = () => {
+  selectMode.value = !selectMode.value
+  if (!selectMode.value) {
+    selectedIndices.value = new Set()
+    showSaveDialog.value = false
+  }
+}
+
+const toggleImageSelect = (index: number) => {
+  const next = new Set(selectedIndices.value)
+  if (next.has(index)) {
+    next.delete(index)
+  } else {
+    next.add(index)
+  }
+  selectedIndices.value = next
+}
+
+const toggleSelectAll = (val: boolean) => {
+  if (val) {
+    selectedIndices.value = new Set(images.value.map((img: any) => img.index))
+  } else {
+    selectedIndices.value = new Set()
+  }
+}
+
+const pickFolder = async () => {
+  try {
+    // Try File System Access API (Chrome/Edge)
+    const dirHandle = await (window as any).showDirectoryPicker()
+    if (dirHandle && dirHandle.name) {
+      // We can't get the full OS path from the API, so prompt the user to copy it
+      ElMessage.info(`已选择文件夹: ${dirHandle.name}，请手动输入完整路径或在此文件夹下创建子文件夹保存`)
+      saveFolder.value = dirHandle.name
+    }
+  } catch {
+    // User cancelled or API not available — fall back to manual input
+    ElMessage.info('请手动输入目标目录路径，或粘贴从文件资源管理器复制的路径')
+  }
+}
+
+const saveImages = async () => {
+  if (!taskId.value || selectedIndices.value.size === 0 || !saveFolder.value.trim()) return
+  savingImages.value = true
+  try {
+    const res = await axios.post(`/api/docx/save-images/${taskId.value}`, {
+      indices: Array.from(selectedIndices.value),
+      folder: saveFolder.value.trim(),
+    })
+    if (res.data.success) {
+      ElMessage.success(`已保存 ${res.data.saved_count} 张图片到 ${res.data.target_folder}`)
+      if (res.data.failed.length > 0) {
+        ElMessage.warning(`${res.data.failed.length} 张图片保存失败`)
+      }
+      showSaveDialog.value = false
+      selectMode.value = false
+      selectedIndices.value = new Set()
+    } else {
+      ElMessage.error(res.data.error || '保存失败')
+    }
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message || '保存失败')
+  } finally {
+    savingImages.value = false
+  }
+}
+
 onMounted(() => {
   fetchTasks()
 })
@@ -726,6 +858,25 @@ onUnmounted(() => {
 .task-id { font-weight: 700; color: #6366f1; font-family: monospace; }
 .image-count { color: #64748b; font-size: 14px; }
 .status-actions { display: flex; gap: 8px; }
+
+.select-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 10px;
+  padding: 10px 16px; margin-bottom: 4px;
+}
+.select-toolbar-left { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #475569; }
+.select-toolbar-left strong { color: #6366f1; }
+.select-toolbar-right { display: flex; gap: 8px; }
+
+.select-mode-card { cursor: pointer; }
+.select-mode-card:hover { border-color: #a5b4fc; }
+.select-mode-card.select-checked { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.25); }
+.select-overlay {
+  position: absolute; top: 4px; left: 4px; z-index: 6;
+  width: 22px; height: 22px; background: white; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,.15);
+}
 
 .error-banner {
   display: flex; align-items: center; gap: 8px;
