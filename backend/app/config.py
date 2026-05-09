@@ -27,7 +27,7 @@ class Config:
     LOG_FILE = os.path.join(BASE_DIR, 'logs', 'app.log')
 
     API_PREFIX = '/api'
-    MAX_CONTENT_LENGTH = 200 * 1024 * 1024
+    MAX_CONTENT_LENGTH = 1024 * 1024 * 1024  # 1GB, 部分docx含大量PNG可能超500MB
 
     SILICONFLOW_API_KEYS = os.environ.get('SILICONFLOW_API_KEYS', os.environ.get('SILICONFLOW_API_KEY', ''))
     SILICONFLOW_API_KEY_LIST = [k.strip() for k in SILICONFLOW_API_KEYS.split(',') if k.strip()]

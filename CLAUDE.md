@@ -17,12 +17,13 @@ yolov11/
 │   │   │   ├── docx.py          # 文档分析 API（上传/批量分析/单张分析/SSE/报告）
 │   │   │   └── detection.py     # YOLO 检测 API
 │   │   ├── services/
-│   │   │   ├── ai_analysis_service.py  # AI 分析（SiliconFlow API 调用）
-│   │   │   ├── ai_cache.py            # 图片 MD5 缓存
-│   │   │   ├── docx_service.py        # .docx 图片提取 + 压缩
-│   │   │   ├── task_service.py        # 任务持久化 + 报告生成
-│   │   │   ├── detection.py           # YOLO 检测逻辑
-│   │   │   └── rules_checker.py       # 12 条 Shapely 规范检查规则
+│   │   │   ├── ai_analysis_service.py   # AI 分析（SiliconFlow API 调用）
+│   │   │   ├── ai_cache.py             # 图片 MD5 缓存
+│   │   │   ├── classifier_service.py   # 多信号融合分类器（关键词 + 置信度）
+│   │   │   ├── docx_service.py         # .docx 图片提取 + 压缩 + 页码估算
+│   │   │   ├── task_service.py         # 任务持久化 + 报告生成
+│   │   │   ├── detection.py            # YOLO 检测逻辑
+│   │   │   └── rules_checker.py        # 12 条 Shapely 规范检查规则
 │   │   ├── config.py            # 配置（从 .env 读取）
 │   │   └── main.py              # Flask 应用入口
 │   ├── cache_ai/                # AI 缓存目录（不提交）
@@ -62,6 +63,39 @@ yolov11/
 
 ### 4. 施工规范检查
 - 12 条几何规则（Shapely），如塔吊覆盖、大门-道路连接等
+
+## 图纸分类系统 (`classifier_service.py`)
+
+### 多信号融合分类
+
+对齐 `docs/技术标图纸要素识别.xlsx` 的分类体系，采用多信号加权融合：
+
+| 信号源 | 权重 | 说明 |
+|--------|------|------|
+| `figure_name` | 5.0x | 图名直接包含类别名（最可靠） |
+| `stage_pattern` | 5.0x | 检测 `X阶段施工平面布置图` 模式，映射到对应阶段类别 |
+| `context` | 1.0x | 文档段落上下文中的关键词 |
+| `filename` | 0.8x | 文件名（信号弱） |
+
+### 阶段模式映射
+
+识别图名中的 `X阶段施工平面布置图` 并映射到对应类别：
+- 园林绿化/绿化施工/景观 → 装饰装修图
+- 土方/基坑 → 土方工程图
+- 基础 → 基础结构图
+- 主体 → 主体结构图
+- 装饰装修/精装修 → 装饰装修图
+- 施工准备 → 施工计划图
+
+### 置信度计算
+
+`confidence = max_category_score / total_all_scores`，仅单类别匹配时接近 100%，多类别竞争时分值分散。
+
+### 已知限制
+
+1. Python-docx 无法准确提取 Word 分页信息（依赖 `lastRenderedPageBreak` 标记，多数文档无此标记）
+2. 页码无法可靠获取，前端改为展示图片序号（第X张图）
+3. 关键词匹配为纯文本子串匹配，不涉及语义理解
 
 ## AI 分析服务 (`ai_analysis_service.py`)
 
@@ -105,6 +139,7 @@ DEBUG=true
 2. LLM 返回的 `evaluation` 字段格式不统一（string/dict 混排），代码已做归一化处理
 3. 部分 docx 中的 PNG 图片可能非常大（100MB+），压缩后 JPEG ~400KB，原图跳过不发送
 4. venv 用 Python 3.13，部分依赖边缘兼容
+5. python-docx 无法精确提取 Word 页码（依赖的 `lastRenderedPageBreak` 标记多数文档不生成），前端改为展示图片序号
 
 ## 代码约定
 

@@ -87,7 +87,7 @@
                 </span>
               </span>
             </div>
-            <div class="card-page">P{{ img.page_number || 1 }}</div>
+            <div class="card-page">第{{ img.index }}张</div>
           </div>
         </div>
 
@@ -110,7 +110,7 @@
                 </el-tag>
                 <el-tag type="warning" size="large" effect="plain">
                   <el-icon :size="14" style="margin-right: 4px;"><Document /></el-icon>
-                  第 {{ selectedImage.page_number || 1 }} 页
+                  第 {{ selectedImage.index }} 张
                 </el-tag>
               </div>
             </div>

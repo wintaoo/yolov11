@@ -2,12 +2,14 @@
 统一图纸分类服务 - 多信号融合 + 置信度评分
 
 信号源权重:
-  figure_name  5.0x  (图名直接包含类别名)
-  context      1.0x  (文档段落上下文)
-  filename     0.8x  (文件名，信号弱)
+  figure_name   5.0x  (图名直接包含类别名)
+  stage_pattern 5.0x  (X阶段施工平面布置图 → 对应阶段类别)
+  context       1.0x  (文档段落上下文)
+  filename      0.8x  (文件名，信号弱)
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -24,7 +26,7 @@ ALL_CATEGORIES = [
 CATEGORY_KEYWORDS: dict[str, list[str]] = {
     '周边环境图': [
         '周边环境', '项目区位', '现场踏勘', '环境图', '区位图',
-        '地理位置', '周边概况', '绿化', '景观', '踏勘',
+        '地理位置', '周边概况', '踏勘', '周边现状', '周边地貌',
     ],
     '进度计划图': [
         '进度计划', '横道图', '开竣工', '施工进度', '进度图',
@@ -59,7 +61,8 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
     ],
     '装饰装修图': [
         '装饰装修', '装修图', '装饰图', '装修做法', '精装修',
-        '外立面', '内装',
+        '外立面', '内装', '园林绿化', '绿化种植', '景观施工',
+        '绿化施工', '硬质铺装', '铺装',
     ],
     '施工计划图': [
         '施工计划', '施工安排', '计划图', '施工部署', '总体安排',
@@ -78,6 +81,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
 # 信号权重
 SIGNAL_WEIGHTS = {
     'figure_name': 5.0,
+    'stage_pattern': 5.0,
     'context': 1.0,
     'filename': 0.8,
 }
@@ -113,6 +117,65 @@ def _score_signal(text: str) -> dict[str, dict]:
     return scores
 
 
+def _map_stage_to_category(stage_name):
+    """Map a stage prefix (e.g. 园林绿化, 土方) to the most appropriate category."""
+    stage_map = [
+        ('园林绿化', '装饰装修图'),
+        ('绿化施工', '装饰装修图'),
+        ('绿化种植', '装饰装修图'),
+        ('景观', '装饰装修图'),
+        ('装饰装修', '装饰装修图'),
+        ('精装修', '装饰装修图'),
+        ('土方', '土方工程图'),
+        ('基坑', '土方工程图'),
+        ('基础', '基础结构图'),
+        ('主体', '主体结构图'),
+        ('施工准备', '施工计划图'),
+        ('临建', '临建设施平面布置图'),
+        ('临时', '临建设施平面布置图'),
+    ]
+    for key, cat in stage_map:
+        if key in stage_name:
+            return cat
+    return '总平面布置图'
+
+
+def _extract_stage_signal(text):
+    """Detect stage-specific layout plan patterns like 园林绿化施工阶段平面布置图.
+
+    Returns a signal dict in the same format as _score_signal():
+        {category: {'raw_score': int, 'keyword_count': int, 'matched': [str]}}
+    """
+    if not text:
+        return {}
+
+    stage_patterns = [
+        r'(\S{2,8})施工阶段平面布置图',
+        r'(\S{2,8})阶段施工平面布置图',
+        r'(\S{2,8})阶段平面布置图',
+    ]
+
+    for pattern in stage_patterns:
+        match = re.search(pattern, text)
+        if match:
+            full_match = match.group(0)
+            stage_name = match.group(1)
+            # Strip leading punctuation or numbers (e.g. "图6 " prefix)
+            stage_name = re.sub(r'^[图\d\s]+', '', stage_name)
+            if not stage_name:
+                continue
+            category = _map_stage_to_category(stage_name)
+            return {
+                category: {
+                    'raw_score': len(full_match),
+                    'keyword_count': 1,
+                    'matched': [full_match],
+                }
+            }
+
+    return {}
+
+
 def classify(
     context: str = '',
     figure_name: str = '',
@@ -134,11 +197,19 @@ def classify(
         s = _score_signal(figure_name)
         if s:
             signals['figure_name'] = s
+        stage_s = _extract_stage_signal(figure_name)
+        if stage_s:
+            signals['stage_pattern'] = stage_s
 
     if context:
         s = _score_signal(context)
         if s:
             signals['context'] = s
+        # Also check context for stage patterns (but only if figure_name didn't already find one)
+        if 'stage_pattern' not in signals:
+            stage_s = _extract_stage_signal(context)
+            if stage_s:
+                signals['stage_pattern'] = stage_s
 
     if filename:
         s = _score_signal(filename)

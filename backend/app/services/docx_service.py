@@ -33,19 +33,6 @@ def _get_text(elem):
     return ''.join(parts).strip()
 
 
-def _has_page_break(xml_str):
-    """Check if a paragraph XML contains a page break indicator.
-
-    Works across namespace prefixes (w:, ns0:, etc.) by matching
-    the local element name and attribute value patterns.
-    """
-    if 'lastRenderedPageBreak' in xml_str:
-        return True
-    if 'type="page"' in xml_str or "type='page'" in xml_str:
-        return True
-    return False
-
-
 def _collect_all_paras(doc):
     """Return ALL <w:p> elements in document order (depth-first body walk).
 
@@ -60,43 +47,71 @@ def _collect_all_paras(doc):
     return result
 
 
+def _detect_page_breaks(paras):
+    """Scan paragraphs for page break signals.
+
+    Returns a list of (index, starts_new_page) tuples:
+      - starts_new_page=True:  paragraph at this index IS on the new page
+        (lastRenderedPageBreak — Word's natural page break marker)
+      - starts_new_page=False: paragraph at this index STAYS on the old page
+        (w:br type="page" — explicit break within/between paragraphs)
+    """
+    breaks = []
+    for i, (elem, _text) in enumerate(paras):
+        xml_str = etree.tostring(elem, encoding='unicode')
+        has_lrpb = 'lastRenderedPageBreak' in xml_str
+        has_br = 'type="page"' in xml_str or "type='page'" in xml_str
+
+        if has_lrpb and not has_br:
+            breaks.append((i, True))
+        elif has_br:
+            breaks.append((i, False))
+    return breaks
+
+
 def _build_page_map(paras):
     """Build flat-index -> page-number map from a list of (elem, text) tuples.
 
     Detects page breaks by scanning each paragraph's serialized XML.
-    Uses detected breaks as absolute anchors; falls back to a conservative
-    heuristic when no breaks are found.
+    When no breaks are found, estimates pages based on accumulated character
+    count (~600 chars/page for mixed technical docs).
     """
     if not paras:
         return {}, 0
 
-    page_break_indices = []
-    for i, (elem, _text) in enumerate(paras):
-        xml_str = etree.tostring(elem, encoding='unicode')
-        if _has_page_break(xml_str):
-            page_break_indices.append(i)
-
+    breaks = _detect_page_breaks(paras)
     total = len(paras)
 
-    if page_break_indices:
+    if breaks:
         page_map = {}
         current_page = 1
         break_cursor = 0
         for i in range(total):
-            if break_cursor < len(page_break_indices) and i == page_break_indices[break_cursor]:
-                page_map[i] = current_page
-                current_page += 1
+            if break_cursor < len(breaks) and i == breaks[break_cursor][0]:
+                starts_new_page = breaks[break_cursor][1]
+                if starts_new_page:
+                    current_page += 1
+                    page_map[i] = current_page
+                else:
+                    page_map[i] = current_page
+                    current_page += 1
                 break_cursor += 1
             else:
                 page_map[i] = current_page
         total_pages = current_page
     else:
-        # No breaks — assume ~10 paragraphs per page
-        units_per_page = max(6, min(15, total // 4)) if total > 4 else max(3, total)
+        # No explicit breaks — estimate from accumulated character count
+        CHARS_PER_PAGE = 600
         page_map = {}
+        current_page = 1
+        char_count = 0
         for i in range(total):
-            page_map[i] = max(1, (i // units_per_page) + 1)
-        total_pages = max(page_map.values()) if page_map else 1
+            page_map[i] = current_page
+            char_count += len(paras[i][1])
+            if char_count >= CHARS_PER_PAGE:
+                current_page += 1
+                char_count = 0
+        total_pages = current_page
 
     return page_map, total_pages
 
@@ -169,7 +184,18 @@ def extract_images_from_docx(file_path, output_dir):
         except Exception as e:
             logger.error(f"提取图片失败 rel_id={rel_id}: {e}")
 
-    logger.info(f"从文档中提取了 {len(images)} 张图片")
+    # Sort by document position so index reflects appearance order.
+    # Images with no para position (-1) go to the end.
+    images.sort(key=lambda img: (
+        0 if img['para_position'] >= 0 else 1,
+        img['para_position'] if img['para_position'] >= 0 else 0,
+    ))
+
+    # Renumber indices after sorting
+    for new_idx, img in enumerate(images, 1):
+        img['index'] = new_idx
+
+    logger.info(f"从文档中提取了 {len(images)} 张图片（已按文档顺序排列）")
     return {
         'total': len(images),
         'images': images,
