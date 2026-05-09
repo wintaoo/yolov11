@@ -46,6 +46,8 @@ def save_task(tasks_root, task_id, task_data):
             'filename': img['filename'],
             'context': img.get('context', ''),
             'guessed_category': img.get('guessed_category', '其他'),
+            'classification_confidence': img.get('classification_confidence', 0.0),
+            'classification_signals': img.get('classification_signals', {}),
             'figure_name': img.get('figure_name', ''),
             'page_number': img.get('page_number', 1),
         } for img in task_data.get('images', [])],

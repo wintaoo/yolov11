@@ -60,6 +60,9 @@
             <span class="filename">{{ currentDisplayName }}</span>
             <el-tag v-if="serverMode && currentServerImage?.guessed_category" size="small" type="info">
               {{ currentServerImage.guessed_category }}
+              <span v-if="currentServerImage?.classification_confidence > 0" style="margin-left:4px;opacity:0.85">
+                {{ (currentServerImage.classification_confidence * 100).toFixed(0) }}%
+              </span>
             </el-tag>
             <span class="detect-time" v-if="processingTime">检测耗时 {{ processingTime }}ms</span>
           </div>
@@ -340,6 +343,7 @@ const loadFromParsedFolder = async () => {
         ...img,
         figure_name: img.figure_name || '',
         guessed_category: img.guessed_category || '其他',
+        classification_confidence: img.classification_confidence || 0,
         page_number: img.page_number || 1,
       }))
       imageFiles.value = []

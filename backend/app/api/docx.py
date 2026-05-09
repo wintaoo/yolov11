@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, current_app, send_file
-from backend.app.services.docx_service import extract_images_from_docx, guess_category_from_context
+from backend.app.services.docx_service import extract_images_from_docx, guess_category_from_context, guess_category_with_confidence
 from backend.app.services import task_service
 from backend.app.config import Config
 import os
@@ -90,7 +90,14 @@ def upload_docx():
         extract_result = extract_images_from_docx(docx_path, img_dir)
 
         for img in extract_result['images']:
-            img['guessed_category'] = guess_category_from_context(img.get('context', ''))
+            classification = guess_category_with_confidence(
+                context=img.get('context', ''),
+                figure_name=img.get('figure_name', ''),
+                filename=img.get('filename', ''),
+            )
+            img['guessed_category'] = classification.category
+            img['classification_confidence'] = classification.confidence
+            img['classification_signals'] = classification.signal_breakdown
 
         task_data = {
             'status': 'extracted',
@@ -165,6 +172,8 @@ def _build_upload_response(task_data, task_id, reused=False):
             'original_filename': img.get('filename', ''),
             'context': img.get('context', ''),
             'guessed_category': img.get('guessed_category', '其他'),
+            'classification_confidence': img.get('classification_confidence', 0.0),
+            'classification_signals': img.get('classification_signals', {}),
             'figure_name': img.get('figure_name', ''),
             'page_number': img.get('page_number', 1),
         } for img in images],
@@ -221,15 +230,17 @@ def get_parsed_folder():
                 image_figure_map[img.get('parsed_filename', img.get('filename', ''))] = {
                     'figure_name': img.get('figure_name', ''),
                     'guessed_category': img.get('guessed_category', '其他'),
+                    'classification_confidence': img.get('classification_confidence', 0.0),
                     'page_number': img.get('page_number', 1),
                     'index': img.get('index', 0),
                 }
 
-    # Enrich image list with figure_name and page_number
+    # Enrich image list with figure_name, page_number, and confidence
     for img_info in images:
         mapped = image_figure_map.get(img_info['filename'], {})
         img_info['figure_name'] = mapped.get('figure_name', '')
         img_info['guessed_category'] = mapped.get('guessed_category', '其他')
+        img_info['classification_confidence'] = mapped.get('classification_confidence', 0.0)
         img_info['page_number'] = mapped.get('page_number', 1)
         img_info['index'] = mapped.get('index', 0)
 
@@ -305,6 +316,7 @@ def get_status(task_id):
             'original_filename': img.get('filename', ''),
             'context': img.get('context', ''),
             'guessed_category': img.get('guessed_category', '其他'),
+            'classification_confidence': img.get('classification_confidence', 0.0),
             'figure_name': img.get('figure_name', ''),
             'page_number': img.get('page_number', 1),
         } for img in task_data.get('images', [])],

@@ -216,52 +216,28 @@ def extract_figure_name(context):
     return ''
 
 
-def guess_category_from_context(context):
-    if not context:
-        return '其他'
+def guess_category_from_context(context, figure_name='', filename=''):
+    """委托到 ClassifierService，返回最可能的类别名称。
 
-    keywords_map = {
-        '周边环境图': ['周边环境', '项目区位', '现场踏勘', '环境图', '区位图', '地理位置', '周边概况'],
-        '进度计划图': ['进度计划', '横道图', '开竣工', '施工进度', '进度图', '工期安排', '进度表'],
-        '分区规划图': ['分区规划', '规划图', '阶段划分', '分区示意', '分区图'],
-        '总平面布置图': ['总平面布置', '施工总平面', '平面布置图', '总平面', '总平图', '总平布置'],
-        '基础结构图': ['基础结构', '基础图', '结构布置', '桩基', '基础平面', '基础施工'],
-        '临时用电布置图': ['临时用电', '用电布置', '配电', '临电图', '用电图', '临电', '现场用电'],
-        '临时用水布置图': ['临时用水', '用水布置', '给水', '排水', '临水图', '临水', '现场用水'],
-        '土方工程图': ['土方工程', '土方开挖', '基坑', '土方图', '开挖图', '挖方'],
-        '主体结构图': ['主体结构', '结构层', '主体图', '主体施工', '结构施工'],
-        '装饰装修图': ['装饰装修', '装修图', '装饰图', '装修做法'],
-        '施工计划图': ['施工计划', '施工安排', '计划图', '施工部署', '总体安排'],
-        '临建设施平面布置图': ['临建设施', '临建平面', '临建布置', '活动板房', '临建图', '临设', '临时设施'],
-        '施工分区图': ['施工分区', '分区施工', '施工段划分', '施工段', '流水段'],
-    }
+    保留旧签名兼容 (context: str) -> str，同时支持新参数。
+    """
+    from .classifier_service import classify
+    result = classify(
+        context=context or '',
+        figure_name=figure_name or '',
+        filename=filename or '',
+    )
+    return result.category
 
-    scores = {}
-    match_counts = {}
 
-    for cat, keywords in keywords_map.items():
-        total = 0
-        count = 0
-        for kw in keywords:
-            if kw in context:
-                total += len(kw)
-                count += 1
-        if total > 0:
-            scores[cat] = total
-            match_counts[cat] = count
-
-    if not scores:
-        return '其他'
-
-    max_score = max(scores.values())
-    best = [c for c, s in scores.items() if s == max_score]
-
-    if len(best) == 1:
-        return best[0]
-
-    best_with_counts = [(c, match_counts[c]) for c in best]
-    best_with_counts.sort(key=lambda x: (-x[1], x[0]))
-    return best_with_counts[0][0]
+def guess_category_with_confidence(context='', figure_name='', filename=''):
+    """多信号融合分类，返回完整的 ClassificationResult（含置信度）。"""
+    from .classifier_service import classify
+    return classify(
+        context=context or '',
+        figure_name=figure_name or '',
+        filename=filename or '',
+    )
 
 
 def convert_to_base64(filepath):

@@ -80,7 +80,12 @@
             <img :src="`/api/docx/image/${taskId}/${img.filename}`" class="card-img" loading="lazy" />
             <div class="card-info">
               <span class="card-figname" :title="img.figure_name">{{ img.figure_name || '#' + img.index }}</span>
-              <span class="card-cat">{{ img.guessed_category || '其他' }}</span>
+              <span class="card-cat">
+                {{ img.guessed_category || '其他' }}
+                <span class="card-conf" v-if="img.classification_confidence > 0" :class="confidenceClass(img.classification_confidence)">
+                  {{ (img.classification_confidence * 100).toFixed(0) }}%
+                </span>
+              </span>
             </div>
             <div class="card-page">P{{ img.page_number || 1 }}</div>
           </div>
@@ -99,6 +104,9 @@
               <div class="info-meta-row">
                 <el-tag :type="getTypeColor(selectedImage.guessed_category)" size="large">
                   {{ selectedImage.guessed_category || '未分类' }}
+                </el-tag>
+                <el-tag v-if="selectedImage.classification_confidence > 0" :type="confidenceTagType(selectedImage.classification_confidence)" size="large" effect="dark">
+                  置信度 {{ (selectedImage.classification_confidence * 100).toFixed(0) }}%
                 </el-tag>
                 <el-tag type="warning" size="large" effect="plain">
                   <el-icon :size="14" style="margin-right: 4px;"><Document /></el-icon>
@@ -122,11 +130,14 @@
       </div>
 
       <div class="category-summary" v-if="Object.keys(categoryStats).length">
-        <h4>图片分类统计（规则匹配）</h4>
+        <h4>图片分类统计（多信号融合匹配）</h4>
         <div class="cat-chips">
           <span v-for="(count, cat) in sortedCategoryStats" :key="cat" class="cat-chip">
             {{ cat }} <strong>{{ count }}</strong>
           </span>
+        </div>
+        <div class="confidence-summary" v-if="averageConfidence > 0">
+          平均分类置信度: <strong :style="{ color: confidenceSummaryColor }">{{ (averageConfidence * 100).toFixed(1) }}%</strong>
         </div>
       </div>
     </div>
@@ -153,6 +164,33 @@ const sortedCategoryStats = computed(() => {
   entries.sort((a, b) => b[1] - a[1])
   return Object.fromEntries(entries)
 })
+
+const averageConfidence = computed(() => {
+  const confs = images.value
+    .map(i => i.classification_confidence)
+    .filter((c: any) => c !== undefined && c !== null && c > 0)
+  if (!confs.length) return 0
+  return confs.reduce((a: number, b: number) => a + b, 0) / confs.length
+})
+
+const confidenceSummaryColor = computed(() => {
+  const avg = averageConfidence.value
+  if (avg >= 0.8) return '#16a34a'
+  if (avg >= 0.5) return '#d97706'
+  return '#dc2626'
+})
+
+const confidenceClass = (conf: number) => {
+  if (conf >= 0.8) return 'conf-high'
+  if (conf >= 0.5) return 'conf-mid'
+  return 'conf-low'
+}
+
+const confidenceTagType = (conf: number): 'success' | 'warning' | 'danger' => {
+  if (conf >= 0.8) return 'success'
+  if (conf >= 0.5) return 'warning'
+  return 'danger'
+}
 
 const getTypeColor = (t: string) => {
   const m: Record<string, string> = {
@@ -330,7 +368,11 @@ onMounted(() => {
 .card-img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
 .card-info { display: flex; justify-content: space-between; padding: 6px 8px; font-size: 11px; }
 .card-figname { color: #1e293b; font-weight: 600; font-size: 10px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card-cat { color: #6366f1; font-weight: 500; font-size: 10px; max-width: 55px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-cat { color: #6366f1; font-weight: 500; font-size: 10px; max-width: 55px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; flex-direction: column; gap: 1px; }
+.card-conf { font-size: 9px; font-weight: 700; }
+.card-conf.conf-high { color: #16a34a; }
+.card-conf.conf-mid { color: #d97706; }
+.card-conf.conf-low { color: #dc2626; }
 .card-page { position: absolute; bottom: 4px; right: 4px; font-size: 9px; color: #94a3b8; background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
 
 .detail-panel {
@@ -355,4 +397,5 @@ onMounted(() => {
 .cat-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .cat-chip { padding: 4px 12px; border-radius: 14px; font-size: 13px; background: #f1f5f9; color: #475569; }
 .cat-chip strong { color: #1e293b; margin-left: 2px; }
+.confidence-summary { margin-top: 10px; font-size: 13px; color: #64748b; }
 </style>
