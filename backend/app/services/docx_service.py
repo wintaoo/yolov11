@@ -21,16 +21,94 @@ DRAWING_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 RID_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 
 
+W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+
+
+def _get_text(elem):
+    """Extract all text from a paragraph element."""
+    parts = []
+    for t in elem.iter(f'{{{W_NS}}}t'):
+        if t.text:
+            parts.append(t.text)
+    return ''.join(parts).strip()
+
+
+def _has_page_break(xml_str):
+    """Check if a paragraph XML contains a page break indicator.
+
+    Works across namespace prefixes (w:, ns0:, etc.) by matching
+    the local element name and attribute value patterns.
+    """
+    if 'lastRenderedPageBreak' in xml_str:
+        return True
+    if 'type="page"' in xml_str or "type='page'" in xml_str:
+        return True
+    return False
+
+
+def _collect_all_paras(doc):
+    """Return ALL <w:p> elements in document order (depth-first body walk).
+
+    Includes paragraphs nested inside table cells. Each entry is a
+    (element, text_string) tuple. The flat index is used for both
+    image location and page-number lookup.
+    """
+    result = []
+    body = doc.element.body
+    for para in body.iter(f'{{{W_NS}}}p'):
+        result.append((para, _get_text(para)))
+    return result
+
+
+def _build_page_map(paras):
+    """Build flat-index -> page-number map from a list of (elem, text) tuples.
+
+    Detects page breaks by scanning each paragraph's serialized XML.
+    Uses detected breaks as absolute anchors; falls back to a conservative
+    heuristic when no breaks are found.
+    """
+    if not paras:
+        return {}, 0
+
+    page_break_indices = []
+    for i, (elem, _text) in enumerate(paras):
+        xml_str = etree.tostring(elem, encoding='unicode')
+        if _has_page_break(xml_str):
+            page_break_indices.append(i)
+
+    total = len(paras)
+
+    if page_break_indices:
+        page_map = {}
+        current_page = 1
+        break_cursor = 0
+        for i in range(total):
+            if break_cursor < len(page_break_indices) and i == page_break_indices[break_cursor]:
+                page_map[i] = current_page
+                current_page += 1
+                break_cursor += 1
+            else:
+                page_map[i] = current_page
+        total_pages = current_page
+    else:
+        # No breaks — assume ~10 paragraphs per page
+        units_per_page = max(6, min(15, total // 4)) if total > 4 else max(3, total)
+        page_map = {}
+        for i in range(total):
+            page_map[i] = max(1, (i // units_per_page) + 1)
+        total_pages = max(page_map.values()) if page_map else 1
+
+    return page_map, total_pages
+
+
 def extract_images_from_docx(file_path, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     doc = Document(file_path)
     images = []
     image_idx = 0
-    paragraph_texts = []
 
-    for para in doc.paragraphs:
-        text = para.text.strip()
-        paragraph_texts.append(text)
+    all_paras = _collect_all_paras(doc)
+    page_map, total_pages = _build_page_map(all_paras)
 
     rels = doc.part.rels
     for rel_id, rel in rels.items():
@@ -49,30 +127,31 @@ def extract_images_from_docx(file_path, output_dir):
             with open(filepath, 'wb') as f:
                 f.write(image_data)
 
-            context_text = ""
-            for para in doc.paragraphs:
-                xml_str = para._element.xml
-                if rel_id in xml_str:
-                    context_text += para.text + " "
+            # Find the paragraph that contains this image's relationship ID.
+            # Use \b word boundaries so "rId1" does NOT match inside "rId10".
+            para_flat_idx = -1
+            para_text = ""
+            rel_pattern = re.compile(rf'\b{re.escape(rel_id)}\b')
+            for flat_idx, (elem, text) in enumerate(all_paras):
+                xml_str = etree.tostring(elem, encoding='unicode')
+                if rel_pattern.search(xml_str):
+                    para_flat_idx = flat_idx
+                    para_text = text
+                    break
 
-            if context_text.strip():
-                caption = context_text.strip()
-            else:
-                try:
-                    caption = ''
-                    current_pos = -1
-                    for pi, para in enumerate(doc.paragraphs):
-                        if rel_id in para._element.xml:
-                            current_pos = pi
-                            break
-                    if current_pos >= 0:
-                        for i in range(max(0, current_pos - 1), min(len(doc.paragraphs), current_pos + 3)):
-                            t = doc.paragraphs[i].text.strip()
-                            if t:
-                                caption += t + ' '
-                    caption = caption.strip()
-                except:
-                    caption = ''
+            # Gather caption from the containing paragraph + nearby paragraphs
+            caption = ""
+            if para_flat_idx >= 0:
+                start = max(0, para_flat_idx - 1)
+                end = min(len(all_paras), para_flat_idx + 3)
+                for i in range(start, end):
+                    t = all_paras[i][1]
+                    if t:
+                        caption += t + " "
+            caption = caption.strip()
+
+            figure_name = extract_figure_name(caption)
+            page_number = page_map.get(para_flat_idx, 1) if para_flat_idx >= 0 else 1
 
             images.append({
                 'index': image_idx,
@@ -80,9 +159,12 @@ def extract_images_from_docx(file_path, output_dir):
                 'filepath': filepath,
                 'context': caption[:500],
                 'ext': ext,
+                'figure_name': figure_name,
+                'page_number': page_number,
+                'para_position': para_flat_idx,
             })
 
-            logger.info(f"提取图片 {image_idx}: {filename} (上下文: {caption[:80]}...)")
+            logger.info(f"提取图片 {image_idx}: {filename} 图名={figure_name or '(无)'} 页码≈{page_number} (上下文: {caption[:80]}...)")
 
         except Exception as e:
             logger.error(f"提取图片失败 rel_id={rel_id}: {e}")
@@ -93,6 +175,45 @@ def extract_images_from_docx(file_path, output_dir):
         'images': images,
         'output_dir': output_dir,
     }
+
+
+def extract_figure_name(context):
+    """Extract figure name from context text like '图1 总平面布置图' or '图1-1 基础结构'."""
+    if not context:
+        return ''
+
+    patterns = [
+        # 图1-1 xxx / 图1.1 xxx / 图1—1 xxx
+        r'图\s*(\d+[-–—―.]\d+)\s*[：:\s]+(.{0,60})',
+        # 图1 xxx
+        r'图\s*(\d+)\s*[：:\s]+(.{0,60})',
+        # Figure 1-1 xxx
+        r'Figure\s*(\d+[-–—―.]\d+)\s*[：:\s]+(.{0,60})',
+        # Figure 1 xxx
+        r'Figure\s*(\d+)\s*[：:\s]+(.{0,60})',
+        # (附图1 xxx) / (附图1-1 xxx)
+        r'(?:附图|示意图|图纸)\s*(\d+[-–—―.]?\d*)\s*[：:\s]+(.{0,60})',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, context)
+        if match:
+            num = match.group(1)
+            title = match.group(2).strip() if match.lastindex >= 2 and match.group(2) else ''
+            title = re.sub(r'[\\/:*?"<>|]', '_', title)
+            title = re.sub(r'\s+', ' ', title).strip()
+            if title:
+                return f'图{num} {title}'
+            else:
+                return f'图{num}'
+
+    # Fallback: look for bare "图X" or "图X-X" patterns without colon
+    for pattern in [r'图\s*(\d+[-–—―.]\d+)', r'图\s*(\d+)']:
+        match = re.search(pattern, context)
+        if match:
+            return f'图{match.group(1)}'
+
+    return ''
 
 
 def guess_category_from_context(context):

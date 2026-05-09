@@ -1,15 +1,37 @@
 <template>
   <div class="detection-panel">
+    <div class="parsed-banner" v-if="parsedInfo && !serverMode && !imageFiles.length">
+      <div class="parsed-banner-left">
+        <el-icon :size="18"><FolderOpened /></el-icon>
+        <span>检测到已解析的投标文件：<strong>{{ parsedInfo.doc_name || parsedInfo.task_id }}</strong>，共 <strong>{{ parsedInfo.image_count }}</strong> 张图片</span>
+      </div>
+      <el-button size="small" type="primary" @click="loadFromParsedFolder">
+        <el-icon><FolderOpened /></el-icon>
+        加载布置图
+      </el-button>
+    </div>
+
     <div class="toolbar">
       <div class="toolbar-left">
         <label class="upload-trigger">
           <el-icon :size="18"><FolderAdd /></el-icon>
-          <span>打开文件夹</span>
+          <span>打开本地文件夹</span>
           <input type="file" ref="folderInput" @change="handleFolderSelect" webkitdirectory directory hidden />
         </label>
-        <span class="file-count" v-if="imageFiles.length">
-          {{ currentImageIndex + 1 }} / {{ imageFiles.length }}
+        <el-button
+          v-if="parsedInfo && !serverMode"
+          size="small"
+          type="success"
+          plain
+          @click="loadFromParsedFolder"
+        >
+          <el-icon><FolderOpened /></el-icon>
+          从解析文件加载
+        </el-button>
+        <span class="file-count" v-if="imageFiles.length || serverImages.length">
+          {{ currentImageIndex + 1 }} / {{ totalImageCount }}
         </span>
+        <el-tag v-if="serverMode" size="small" type="success" effect="plain">解析文件模式</el-tag>
       </div>
       <div class="toolbar-right">
         <el-button-group>
@@ -27,15 +49,18 @@
       </div>
     </div>
 
-    <div class="workspace" v-if="imageFiles.length">
+    <div class="workspace" v-if="imageFiles.length || serverImages.length">
       <div class="viewer-area">
         <div class="viewer-header">
           <div class="viewer-tabs">
             <button :class="{ active: viewMode === 'compare' }" @click="viewMode = 'compare'">对比视图</button>
             <button :class="{ active: viewMode === 'result' }" @click="viewMode = 'result'">仅看结果</button>
           </div>
-          <div class="viewer-info" v-if="currentFile">
-            <span class="filename">{{ currentFile.name }}</span>
+          <div class="viewer-info" v-if="currentDisplayName">
+            <span class="filename">{{ currentDisplayName }}</span>
+            <el-tag v-if="serverMode && currentServerImage?.guessed_category" size="small" type="info">
+              {{ currentServerImage.guessed_category }}
+            </el-tag>
             <span class="detect-time" v-if="processingTime">检测耗时 {{ processingTime }}ms</span>
           </div>
         </div>
@@ -71,15 +96,16 @@
           </div>
         </div>
 
-        <div class="filmstrip" v-if="imageFiles.length > 1">
+        <div class="filmstrip" v-if="totalImageCount > 1">
           <div
-            v-for="(file, idx) in imageFiles"
-            :key="file.path"
+            v-for="(item, idx) in allImageDisplayNames"
+            :key="idx"
             class="filmstrip-item"
             :class="{ active: idx === currentImageIndex }"
             @click="selectImage(idx)"
+            :title="item"
           >
-            <span class="filmstrip-name">{{ file.name }}</span>
+            <span class="filmstrip-name">{{ item }}</span>
           </div>
         </div>
       </div>
@@ -91,7 +117,7 @@
             size="large"
             @click="handleDetect"
             :loading="detecting"
-            :disabled="!currentFile"
+            :disabled="!hasCurrentImage"
             class="detect-btn"
           >
             <el-icon v-if="!detecting"><VideoPlay /></el-icon>
@@ -140,10 +166,6 @@
           </div>
         </div>
 
-        <div class="rules-section" v-if="detectionResult?.data?.rules_check_results?.length">
-          <h4 class="section-label">规范检查</h4>
-          <RulesCheckResult :results="detectionResult.data.rules_check_results" />
-        </div>
       </aside>
     </div>
 
@@ -155,13 +177,24 @@
           <circle cx="30" cy="34" r="4" fill="#6366f1"/>
         </svg>
       </div>
-      <h2 class="hero-title">拖放图片或点击下方按钮开始</h2>
-      <p class="hero-desc">支持 JPG、PNG、BMP 格式，可批量导入文件夹</p>
-      <label class="hero-btn">
-        <el-icon :size="20"><FolderAdd /></el-icon>
-        <span>选择图片文件夹</span>
-        <input type="file" ref="folderInput2" @change="handleFolderSelect" webkitdirectory directory hidden />
-      </label>
+      <h2 class="hero-title">布置图检测</h2>
+      <p class="hero-desc">先在"投标文件解析"中上传 .docx 文件，然后在此加载布置图进行检测，也支持直接打开本地图片文件夹</p>
+      <div class="hero-actions">
+        <el-button
+          v-if="parsedInfo"
+          type="primary"
+          size="large"
+          @click="loadFromParsedFolder"
+        >
+          <el-icon><FolderOpened /></el-icon>
+          从解析文件加载 ({{ parsedInfo.image_count }} 张)
+        </el-button>
+        <label class="hero-btn">
+          <el-icon :size="20"><FolderAdd /></el-icon>
+          <span>选择本地图片文件夹</span>
+          <input type="file" ref="folderInput2" @change="handleFolderSelect" webkitdirectory directory hidden />
+        </label>
+      </div>
     </div>
   </div>
 </template>
@@ -169,16 +202,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import {
-  FolderAdd, Document, VideoPlay, Download, Delete,
+  FolderAdd, FolderOpened, VideoPlay, Download, Delete,
   Picture, PictureFilled, ArrowLeft, ArrowRight
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
-
 const folderInput = ref<HTMLInputElement | null>(null)
 const folderInput2 = ref<HTMLInputElement | null>(null)
 
 interface FileNode { name: string; path: string; type: 'file' | 'directory'; children?: FileNode[]; raw?: File }
+interface ServerImage { filename: string; size: number; url: string; figure_name?: string; guessed_category?: string; page_number?: number; index?: number }
 interface DetectionItem { class: string; confidence: number; bbox: number[]; category: string }
 
 const fileTreeData = ref<FileNode[]>([])
@@ -193,8 +226,45 @@ const originalImage = ref('')
 const detectedImage = ref('')
 const viewMode = ref<'compare' | 'result'>('compare')
 
+// Server-side parsed folder state
+const serverMode = ref(false)
+const parsedTaskId = ref('')
+const parsedFolder = ref('')
+const serverImages = ref<ServerImage[]>([])
+const parsedInfo = ref<any>(null)
+
+const totalImageCount = computed(() => {
+  if (serverMode.value) return serverImages.value.length
+  return imageFiles.value.length
+})
+
+const allImageDisplayNames = computed(() => {
+  if (serverMode.value) return serverImages.value.map(s => s.figure_name || s.filename)
+  return imageFiles.value.map(f => f.name)
+})
+
+const currentServerImage = computed(() => {
+  if (serverMode.value && serverImages.value[currentImageIndex.value]) {
+    return serverImages.value[currentImageIndex.value]
+  }
+  return null
+})
+
+const currentDisplayName = computed(() => {
+  if (currentServerImage.value) {
+    return currentServerImage.value.figure_name || currentServerImage.value.filename
+  }
+  if (currentFile.value) return currentFile.value.name
+  return ''
+})
+
+const hasCurrentImage = computed(() => {
+  if (serverMode.value) return currentImageIndex.value >= 0 && currentImageIndex.value < serverImages.value.length
+  return !!currentFile.value
+})
+
 const hasPreviousImage = computed(() => currentImageIndex.value > 0)
-const hasNextImage = computed(() => currentImageIndex.value < imageFiles.value.length - 1)
+const hasNextImage = computed(() => currentImageIndex.value < totalImageCount.value - 1)
 
 const categoryColors: Record<string, string> = {
   '垂直运输机械': '#ef4444',
@@ -248,6 +318,43 @@ const getAllImageFiles = (tree: FileNode[]): FileNode[] => {
   return files
 }
 
+const fetchParsedFolder = async () => {
+  try {
+    const res = await axios.get('/api/docx/parsed-folder')
+    if (res.data.success) {
+      parsedInfo.value = res.data
+    }
+  } catch {}
+}
+
+const loadFromParsedFolder = async () => {
+  if (!parsedInfo.value) return
+  try {
+    const res = await axios.get(`/api/docx/parsed-images/${parsedInfo.value.task_id}`)
+    if (res.data.success && res.data.images.length > 0) {
+      // Switch to server mode
+      serverMode.value = true
+      parsedTaskId.value = res.data.task_id
+      parsedFolder.value = parsedInfo.value.folder
+      serverImages.value = res.data.images.map((img: any) => ({
+        ...img,
+        figure_name: img.figure_name || '',
+        guessed_category: img.guessed_category || '其他',
+        page_number: img.page_number || 1,
+      }))
+      imageFiles.value = []
+      clearResults()
+      currentImageIndex.value = 0
+      selectImage(0)
+      ElMessage.success(`已加载 ${res.data.total} 张布置图`)
+    } else {
+      ElMessage.warning('解析文件夹中没有图片')
+    }
+  } catch (err: any) {
+    ElMessage.error('加载解析图片失败')
+  }
+}
+
 const handleFolderSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
   const files = Array.from(target.files || []).filter(f => isImageFile(f.name))
@@ -255,32 +362,75 @@ const handleFolderSelect = (event: Event) => {
   const tree = buildFileTree(files)
   fileTreeData.value = tree
   imageFiles.value = getAllImageFiles(tree)
+  serverMode.value = false
+  serverImages.value = []
   target.value = ''
   if (imageFiles.value.length) {
     currentImageIndex.value = 0
     selectImage(0)
   }
-  ElMessage.success(`已加载 ${imageFiles.value.length} 张图片`)
+  ElMessage.success(`已加载 ${imageFiles.value.length} 张本地图片`)
 }
 
 const selectImage = async (idx: number) => {
-  if (idx < 0 || idx >= imageFiles.value.length) return
+  const total = totalImageCount.value
+  if (idx < 0 || idx >= total) return
   currentImageIndex.value = idx
   clearResults()
-  const fileNode = imageFiles.value[idx]
-  if (!fileNode.raw) return
-  const rawFile = new File([fileNode.raw], fileNode.raw.name, { type: fileNode.raw.type, lastModified: fileNode.raw.lastModified }) as any
-  rawFile.uid = Date.now()
-  currentFile.value = { name: fileNode.name, raw: rawFile, uid: rawFile.uid, status: 'success' }
-  originalImage.value = URL.createObjectURL(fileNode.raw)
-  await nextTick()
-  await handleDetect()
+
+  if (serverMode.value) {
+    const simg = serverImages.value[idx]
+    if (!simg) return
+    currentFile.value = null
+    originalImage.value = simg.url
+    await nextTick()
+  } else {
+    const fileNode = imageFiles.value[idx]
+    if (!fileNode?.raw) return
+    const rawFile = new File([fileNode.raw], fileNode.raw.name, { type: fileNode.raw.type, lastModified: fileNode.raw.lastModified }) as any
+    rawFile.uid = Date.now()
+    currentFile.value = { name: fileNode.name, raw: rawFile, uid: rawFile.uid, status: 'success' }
+    originalImage.value = URL.createObjectURL(fileNode.raw)
+    await nextTick()
+  }
 }
 
 const showPreviousImage = () => { if (hasPreviousImage.value) selectImage(currentImageIndex.value - 1) }
 const showNextImage = () => { if (hasNextImage.value) selectImage(currentImageIndex.value + 1) }
 
 const handleDetect = async () => {
+  if (serverMode.value) {
+    await handleDetectServer()
+  } else {
+    await handleDetectLocal()
+  }
+}
+
+const handleDetectServer = async () => {
+  const simg = serverImages.value[currentImageIndex.value]
+  if (!simg) { ElMessage.warning('请先选择图片'); return }
+  detecting.value = true
+  const startTime = Date.now()
+  try {
+    const filePath = parsedFolder.value + '/' + simg.filename
+    const response = await axios.post('/api/detection/detect-by-path', { file_path: filePath })
+    if (response.data.success) {
+      processingTime.value = Date.now() - startTime
+      detectionResult.value = response.data
+      detectionData.value = response.data.data.detections
+      detectedImage.value = `data:image/png;base64,${response.data.data.detected_image}`
+      ElMessage.success(`检测完成，发现 ${detectionData.value.length} 个目标`)
+    } else {
+      ElMessage.error(response.data.error || '检测失败')
+    }
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message || '检测失败')
+  } finally {
+    detecting.value = false
+  }
+}
+
+const handleDetectLocal = async () => {
   if (!currentFile.value) { ElMessage.warning('请先选择图片'); return }
   detecting.value = true
   const startTime = Date.now()
@@ -293,22 +443,12 @@ const handleDetect = async () => {
       detectionResult.value = response.data
       detectionData.value = response.data.data.detections
       detectedImage.value = `data:image/png;base64,${response.data.data.detected_image}`
-      const categorized: any = {}
-      response.data.data.detections.forEach((d: any) => {
-        if (!categorized[d.category]) categorized[d.category] = []
-        categorized[d.category].push(d)
-      })
-      detectionResult.value.data.categorized_detections = categorized
-      try {
-        const rulesRes = await axios.post('/api/check-rules', { detections: response.data.data.detections })
-        if (rulesRes.data.success) detectionResult.value.data.rules_check_results = rulesRes.data.results
-      } catch {}
       ElMessage.success(`检测完成，发现 ${detectionData.value.length} 个目标`)
     } else {
-      ElMessage.error(response.data.error || response.data.data?.message || '检测失败')
+      ElMessage.error(response.data.error || '检测失败')
     }
   } catch (err: any) {
-    ElMessage.error(err.response?.data?.error || err.response?.data?.data?.message || err.message || '检测失败')
+    ElMessage.error(err.response?.data?.error || err.message || '检测失败')
   } finally {
     detecting.value = false
   }
@@ -344,13 +484,27 @@ const downloadResults = () => {
     })
 }
 
+onMounted(() => {
+  fetchParsedFolder()
+})
+
 onUnmounted(() => {
-  if (originalImage.value) URL.revokeObjectURL(originalImage.value)
+  if (originalImage.value && originalImage.value.startsWith('blob:')) {
+    URL.revokeObjectURL(originalImage.value)
+  }
 })
 </script>
 
 <style scoped>
 .detection-panel { display: flex; flex-direction: column; gap: 16px; }
+
+.parsed-banner {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; background: #f0fdf4; border: 1px solid #bbf7d0;
+  border-radius: 10px; font-size: 14px; color: #166534;
+}
+.parsed-banner-left { display: flex; align-items: center; gap: 8px; }
+.parsed-banner-left strong { color: #15803d; }
 
 .toolbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -358,7 +512,7 @@ onUnmounted(() => {
   box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
 
-.toolbar-left { display: flex; align-items: center; gap: 16px; }
+.toolbar-left { display: flex; align-items: center; gap: 12px; }
 
 .upload-trigger {
   display: inline-flex; align-items: center; gap: 6px;
@@ -461,9 +615,7 @@ onUnmounted(() => {
   font-size: 15px;
   font-weight: 600;
 }
-.export-btn {
-  margin-left: 0px !important;
-}
+.export-btn { margin-left: 0px !important; }
 
 .section-label {
   font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase;
@@ -501,22 +653,16 @@ onUnmounted(() => {
   background: #eef2ff; padding: 2px 8px; border-radius: 6px;
 }
 
-.rules-section {
-  background: white; border-radius: 12px; padding: 14px 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.06);
-}
-.rules-section :deep(.rules-card) { box-shadow: none; border: none; }
-.rules-section :deep(.el-card__header) { padding: 0 0 8px; border-bottom: none; }
-
 .upload-hero {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   height: calc(100vh - 160px); text-align: center; gap: 16px;
 }
 .hero-icon { margin-bottom: 4px; }
 .hero-title { font-size: 20px; font-weight: 700; color: #1e293b; }
-.hero-desc { font-size: 14px; color: #94a3b8; }
+.hero-desc { font-size: 14px; color: #94a3b8; max-width: 500px; line-height: 1.6; }
+.hero-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 8px; }
 .hero-btn {
-  display: inline-flex; align-items: center; gap: 8px; margin-top: 8px;
+  display: inline-flex; align-items: center; gap: 8px;
   padding: 14px 32px; background: #6366f1; color: white; border-radius: 10px;
   font-size: 15px; font-weight: 600; cursor: pointer; transition: all .2s;
   box-shadow: 0 4px 14px rgba(99,102,241,.35);

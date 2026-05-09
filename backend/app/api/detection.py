@@ -84,6 +84,38 @@ def analyze():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@detection_bp.route('/detect-by-path', methods=['POST'])
+def detect_by_path():
+    """Run detection on a server-side file path."""
+    try:
+        data = request.get_json(silent=True) or {}
+        file_path = data.get('file_path', '').strip()
+
+        if not file_path:
+            return jsonify({
+                'success': False,
+                'error': '缺少文件路径参数',
+                'data': {'detections': [], 'class_counts': {}, 'message': '缺少文件路径参数'}
+            })
+
+        if not os.path.exists(file_path):
+            return jsonify({
+                'success': False,
+                'error': f'文件不存在: {file_path}',
+                'data': {'detections': [], 'class_counts': {}, 'message': f'文件不存在: {file_path}'}
+            })
+
+        result = detection_service.process_image(file_path)
+        return jsonify(result)
+
+    except Exception as e:
+        current_app.logger.error(f"服务器端检测失败: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'data': {'detections': [], 'class_counts': {}, 'message': f"检测失败: {str(e)}"}
+        })
+
 @detection_bp.route('/model/status', methods=['GET'])
 def model_status():
     """获取模型状态"""

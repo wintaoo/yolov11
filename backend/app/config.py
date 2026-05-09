@@ -23,6 +23,7 @@ class Config:
 
     UPLOAD_FOLDER = UPLOAD_FOLDER
     TASKS_DIR = os.path.join(BASE_DIR, 'tasks')
+    PARSED_IMAGES_DIR = os.path.join(BASE_DIR, 'parsed_images')
     LOG_FILE = os.path.join(BASE_DIR, 'logs', 'app.log')
 
     API_PREFIX = '/api'
@@ -51,6 +52,7 @@ class Config:
     def init_app(app):
         os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
         os.makedirs(Config.TASKS_DIR, exist_ok=True)
+        os.makedirs(Config.PARSED_IMAGES_DIR, exist_ok=True)
         os.makedirs(os.path.dirname(Config.LOG_FILE), exist_ok=True)
 
         if not os.path.exists('logs'):

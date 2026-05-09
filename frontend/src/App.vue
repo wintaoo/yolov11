@@ -6,7 +6,7 @@
           <img src="/seu.svg" alt="SEU" class="brand-logo" />
           <div class="brand-info">
             <span class="brand-text">海南机器管招投标项目 2026</span>
-            <span class="brand-sub">建筑图纸分析系统</span>
+            <span class="brand-sub">投标文件解析与布置图检测系统</span>
           </div>
         </div>
         <div class="header-status">
@@ -16,21 +16,21 @@
       </div>
     </header>
     <div class="ai-disclaimer">
-      <span>本系统在CV的基础上引入大模型用于辅助审查，AI生成可能有误，请仔细甄别。</span>
+      <span>本系统使用CV模型进行目标检测，图片分类基于规则匹配，结果仅供参考，请仔细甄别。</span>
     </div>
     <main class="app-main">
       <div class="main-tabs">
-        <button :class="{ active: activeTab === 'detect' }" @click="activeTab = 'detect'">
-          <el-icon><Picture /></el-icon>
-          图片检测
-        </button>
         <button :class="{ active: activeTab === 'docx' }" @click="activeTab = 'docx'">
           <el-icon><Document /></el-icon>
-          文档分析
+          投标文件解析
+        </button>
+        <button :class="{ active: activeTab === 'detect' }" @click="activeTab = 'detect'">
+          <el-icon><Picture /></el-icon>
+          布置图检测
         </button>
       </div>
-      <DetectionPanel v-if="activeTab === 'detect'" />
       <DocumentAnalysis v-if="activeTab === 'docx'" />
+      <DetectionPanel v-if="activeTab === 'detect'" />
     </main>
   </div>
 </template>
@@ -42,7 +42,7 @@ import DetectionPanel from './components/DetectionPanel.vue'
 import DocumentAnalysis from './components/DocumentAnalysis.vue'
 
 const modelReady = ref(false)
-const activeTab = ref('detect')
+const activeTab = ref('docx')
 
 onMounted(async () => {
   try {

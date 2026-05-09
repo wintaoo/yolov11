@@ -1,6 +1,5 @@
-from flask import Blueprint, request, jsonify, current_app, send_file, Response, stream_with_context
+from flask import Blueprint, request, jsonify, current_app, send_file
 from backend.app.services.docx_service import extract_images_from_docx, guess_category_from_context
-from backend.app.services.ai_analysis_service import analyze_image_with_ai
 from backend.app.services import task_service
 from backend.app.config import Config
 import os
@@ -8,17 +7,10 @@ import re
 import json
 import hashlib
 import shutil
-import queue
-import threading
 import logging
-import time
-import random
-import concurrent.futures
 from datetime import datetime
 
 docx_bp = Blueprint('docx', __name__)
-analysis_tasks = {}
-progress_queues = {}
 logger = logging.getLogger(__name__)
 
 
@@ -28,6 +20,13 @@ def _task_dir(task_id):
 
 def _images_dir(task_id):
     return task_service.images_dir(Config.TASKS_DIR, task_id)
+
+
+def _parsed_dir(task_id=None):
+    base = Config.PARSED_IMAGES_DIR
+    if task_id:
+        return os.path.join(base, task_id)
+    return base
 
 
 def _file_md5(file_storage):
@@ -60,51 +59,9 @@ def upload_docx():
             logger.info(f"检测到重复文档 [{file.filename}], 复用任务: {task_id}")
             task_data = task_service.load_task(Config.TASKS_DIR, task_id)
             if task_data:
-                task_data['task_id'] = task_id
-                analysis_tasks[task_id] = task_data
-                results = task_data.get('results', {})
-                batch_summary = task_data.get('batch_summary', '')
-                analyzed_count = len(results)
-                total = task_data.get('total_images', 0)
-
-                cat_stats = {}
-                for img in task_data.get('images', []):
-                    idx = img['index']
-                    if str(idx) in results:
-                        cat_stats[results[str(idx)].get('image_type', img.get('guessed_category', '其他'))] = \
-                            cat_stats.get(results[str(idx)].get('image_type', img.get('guessed_category', '其他')), 0) + 1
-                    else:
-                        cat_stats[img.get('guessed_category', '其他')] = \
-                            cat_stats.get(img.get('guessed_category', '其他'), 0) + 1
-
-                status = task_data.get('status', 'extracted')
-                if status == 'completed':
-                    hint = f'该文件已有完整分析结果（{analyzed_count}/{total} 张），已自动恢复'
-                elif status == 'analyzing' or status == 'extracted':
-                    hint = f'该文件已有历史任务（已分析 {analyzed_count}/{total} 张），可继续分析'
-                elif status == 'error':
-                    hint = f'该文件上次分析异常，已恢复（已分析 {analyzed_count}/{total} 张），可继续分析'
-                else:
-                    hint = f'该文件已有历史记录（{analyzed_count}/{total} 张）'
-
-                return jsonify({
-                    'success': True,
-                    'task_id': task_id,
-                    'reused': True,
-                    'reuse_hint': hint,
-                    'analyzed_count': analyzed_count,
-                    'total_images': total,
-                    'status': status,
-                    'images': [{
-                        'index': img['index'],
-                        'filename': img['filename'],
-                        'context': img.get('context', ''),
-                        'guessed_category': img.get('guessed_category', '其他'),
-                    } for img in task_data.get('images', [])],
-                    'results': results,
-                    'batch_summary': batch_summary,
-                    'category_guess': cat_stats,
-                })
+                return _build_upload_response(task_data, task_id, reused=True)
+            else:
+                return jsonify({'success': False, 'error': '任务数据读取失败'})
 
         content_md5 = _file_md5(file)
         existing_by_hash = next(
@@ -135,7 +92,7 @@ def upload_docx():
         for img in extract_result['images']:
             img['guessed_category'] = guess_category_from_context(img.get('context', ''))
 
-        analysis_tasks[task_id] = {
+        task_data = {
             'status': 'extracted',
             'task_id': task_id,
             'original_filename': file.filename,
@@ -148,366 +105,210 @@ def upload_docx():
             'created_at': datetime.now().isoformat(),
         }
 
-        task_service.save_task(Config.TASKS_DIR, task_id, analysis_tasks[task_id])
+        task_service.save_task(Config.TASKS_DIR, task_id, task_data)
 
-        category_guess_stats = {}
+        # Copy extracted images to parsed_images folder for DetectionPanel access
+        # Rename using figure_name when available
+        parsed_task_dir = _parsed_dir(task_id)
+        if os.path.exists(parsed_task_dir):
+            shutil.rmtree(parsed_task_dir)
+        os.makedirs(parsed_task_dir, exist_ok=True)
         for img in extract_result['images']:
-            cat = img.get('guessed_category', '其他')
-            category_guess_stats[cat] = category_guess_stats.get(cat, 0) + 1
+            src = img['filepath']
+            ext = img.get('ext', os.path.splitext(img['filename'])[1].lstrip('.'))
+            figure_name = img.get('figure_name', '')
+            if figure_name:
+                safe_name = re.sub(r'[\\/:*?"<>|]', '_', figure_name)[:100]
+                base_filename = f"{safe_name}.{ext}"
+            else:
+                base_filename = img['filename']
+            # Deduplicate: if file exists, append _2, _3, etc.
+            dst_filename = base_filename
+            collision = 2
+            while os.path.exists(os.path.join(parsed_task_dir, dst_filename)):
+                name_part, dot_ext = os.path.splitext(base_filename)
+                dst_filename = f"{name_part}_{collision}{dot_ext}"
+                collision += 1
+            img['parsed_filename'] = dst_filename
+            dst = os.path.join(parsed_task_dir, dst_filename)
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
 
-        return jsonify({
-            'success': True,
-            'task_id': task_id,
-            'total_images': extract_result['total'],
-            'images': [{
-                'index': img['index'],
-                'filename': img['filename'],
-                'context': img['context'],
-                'guessed_category': img['guessed_category'],
-            } for img in extract_result['images']],
-            'category_guess': category_guess_stats,
-        })
+        # Save the active parsed task reference
+        _save_parsed_ref(task_id)
+
+        logger.info(f"文档解析完成 [{task_id}]: {extract_result['total']} 张图片 -> {parsed_task_dir}")
+
+        return _build_upload_response(task_data, task_id, reused=False)
 
     except Exception as e:
         current_app.logger.error(f"DOCX上传失败: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)})
 
 
-@docx_bp.route('/analyze/<task_id>', methods=['POST'])
-def analyze_batch(task_id):
-    if task_id not in analysis_tasks:
-        return jsonify({'success': False, 'error': '任务不存在，请重新上传'})
+def _build_upload_response(task_data, task_id, reused=False):
+    """Build standardized upload response."""
+    images = task_data.get('images', [])
+    category_stats = {}
+    for img in images:
+        cat = img.get('guessed_category', '其他')
+        category_stats[cat] = category_stats.get(cat, 0) + 1
 
-    task = analysis_tasks[task_id]
-    if task.get('batch_running'):
-        return jsonify({'success': False, 'error': '批量分析进行中'})
-
-    task['batch_running'] = True
-    task['batch_progress'] = 0
-    task['batch_total'] = task['total_images']
-    task['batch_results'] = {}
-    task['batch_summary'] = ''
-    task['status'] = 'analyzing'
-    task['batch_error_count'] = 0
-    task_service.save_task(Config.TASKS_DIR, task_id, task)
-
-    def run_batch():
-        try:
-            # Only re-process unanalyzed or previously-errored images
-            existing_results = task.get('results', {})
-            pending_images = []
-            for img in task['images']:
-                idx = str(img['index'])
-                result = existing_results.get(idx)
-                if result is None or result.get('_error'):
-                    pending_images.append(img)
-
-            total = len(pending_images)
-            progress_lock = threading.Lock()
-            error_count = 0
-            pq = queue.Queue()
-            progress_queues[task_id] = pq
-
-            # Pre-populate with already successful results so they survive the batch
-            for img in task['images']:
-                idx = str(img['index'])
-                result = existing_results.get(idx)
-                if result is not None and not result.get('_error'):
-                    task['batch_results'][idx] = result
-                    task_service.save_results(Config.TASKS_DIR, task_id, {idx: result})
-
-            logger.info(f"批量分析 [{task_id}] 共{task['total_images']}张, 待处理{total}张(跳过{task['total_images'] - total}张已完成)")
-
-            if total == 0:
-                task['batch_progress'] = 0
-                task['batch_total'] = 0
-                task['batch_error_count'] = 0
-                task['batch_status'] = 'completed'
-                task['status'] = 'completed'
-                task['batch_running'] = False
-                task_service.save_task(Config.TASKS_DIR, task_id, task)
-                try:
-                    pq.put_nowait(json.dumps({
-                        'type': 'done',
-                        'progress': 0,
-                        'total': 0,
-                        'summary': task.get('batch_summary', ''),
-                        'error_count': 0,
-                        'status': 'completed',
-                    }))
-                except queue.Full:
-                    pass
-                progress_queues.pop(task_id, None)
-                return
-
-            def analyze_one(img):
-                idx = str(img['index'])
-                logger.info(f"批量分析 [{task_id}] #{idx}/{total}: {img['filename']}")
-                # Notify frontend that this image is being analyzed
-                try:
-                    pq.put_nowait(json.dumps({
-                        'type': 'analyzing',
-                        'idx': idx,
-                        'total': total,
-                    }))
-                except queue.Full:
-                    pass
-                try:
-                    result = analyze_image_with_ai(img['filepath'], img.get('context', ''))
-                except Exception as e:
-                    logger.error(f"图片 #{idx} 分析异常: {e}", exc_info=True)
-                    result = {
-                        'image_type': img.get('guessed_category', '其他'),
-                        'summary': f'分析失败: {str(e)[:200]}',
-                        'evaluation': '分析异常，请重试',
-                        'has_drawing': False,
-                        'drawing_name': '',
-                        'elements': {},
-                        'construction_schedule': {'has_schedule': False},
-                        'dimensions_specs': {'found': False},
-                        '_error': str(e),
-                    }
-                with progress_lock:
-                    task['batch_results'][idx] = result
-                    task['batch_progress'] = task.get('batch_progress', 0) + 1
-                    task_service.save_results(Config.TASKS_DIR, task_id, {idx: result})
-                    try:
-                        pq.put_nowait(json.dumps({
-                            'type': 'progress',
-                            'idx': idx,
-                            'progress': task['batch_progress'],
-                            'total': total,
-                            'result': result,
-                        }))
-                    except queue.Full:
-                        pass
-                img_type = result.get('image_type', '?')
-                summary_preview = (result.get('summary', '') or '')[:40]
-                eval_preview = (result.get('evaluation', '') or '')[:30]
-                logger.info(f"  完成 #{idx}: 类型={img_type} 摘要={summary_preview}... 评估={eval_preview}...")
-                return result
-
-            api_key_count = len(Config.SILICONFLOW_API_KEY_LIST) if Config.SILICONFLOW_API_KEY_LIST else 1
-            model_count = len(Config.SILICONFLOW_VISION_MODELS) if Config.SILICONFLOW_VISION_MODELS else 1
-            max_workers = min(max(api_key_count * model_count, 4), max(total, 1))
-            logger.info(f"批量分析 [{task_id}] 并发数={max_workers} (Keys={api_key_count} Models={model_count})")
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = {pool.submit(analyze_one, img): img for img in pending_images}
-                for future in concurrent.futures.as_completed(futures):
-                    try:
-                        future.result()
-                    except Exception as e:
-                        error_count += 1
-                        logger.error(f"线程执行异常: {e}", exc_info=True)
-
-            task['batch_error_count'] = error_count
-            task['batch_status'] = 'summarizing'
-            task_service.save_task(Config.TASKS_DIR, task_id, task)
-            try:
-                pq.put_nowait(json.dumps({'type': 'summarizing', 'progress': task['batch_progress'], 'total': total}))
-            except queue.Full:
-                pass
-
-            task['batch_results'] = dict(sorted(task['batch_results'].items(), key=lambda x: int(x[0])))
-            task_service.save_results(Config.TASKS_DIR, task_id, task['batch_results'])
-
-            full_total = task['total_images']
-            summary = None
-            try:
-                summary = generate_summary(task['batch_results'])
-            except Exception as e:
-                logger.error(f"摘要生成失败 [{task_id}]: {e}", exc_info=True)
-                summary = f"汇总生成失败: {str(e)}\n\n已完成 {len(task['batch_results'])}/{full_total} 张图片分析。"
-            task['batch_summary'] = summary
-            task_service.save_summary(Config.TASKS_DIR, task_id, summary)
-
-            try:
-                task_service.generate_analysis_report(Config.TASKS_DIR, task_id)
-            except Exception as e:
-                logger.error(f"报告生成失败 [{task_id}]: {e}", exc_info=True)
-
-            task['batch_progress'] = total
-            task['status'] = 'completed'
-            task['batch_running'] = False
-            task_service.save_task(Config.TASKS_DIR, task_id, task)
-            logger.info(f"批量分析完成 [{task_id}] (完成{len(task['batch_results'])}/{full_total}张, 本次处理{total}张, 异常{error_count}张)")
-            try:
-                pq.put_nowait(json.dumps({
-                    'type': 'done',
-                    'progress': total,
-                    'total': total,
-                    'summary': summary,
-                    'error_count': error_count,
-                    'status': 'completed',
-                }))
-            except queue.Full:
-                pass
-
-        except Exception as e:
-            logger.error(f"批量分析崩溃 [{task_id}]: {str(e)}", exc_info=True)
-            task['batch_running'] = False
-            task['batch_error'] = str(e)
-            task['status'] = 'error'
-            task_service.save_task(Config.TASKS_DIR, task_id, task)
-            try:
-                pq.put_nowait(json.dumps({'type': 'error', 'error': str(e)}))
-            except queue.Full:
-                pass
-        finally:
-            progress_queues.pop(task_id, None)
-
-    t = threading.Thread(target=run_batch, daemon=True)
-    t.start()
-
-    return jsonify({'success': True, 'status': 'batch_started', 'total': task['batch_total']})
+    return jsonify({
+        'success': True,
+        'task_id': task_id,
+        'reused': reused,
+        'total_images': len(images),
+        'images': [{
+            'index': img['index'],
+            'filename': img.get('parsed_filename', img['filename']),
+            'original_filename': img.get('filename', ''),
+            'context': img.get('context', ''),
+            'guessed_category': img.get('guessed_category', '其他'),
+            'figure_name': img.get('figure_name', ''),
+            'page_number': img.get('page_number', 1),
+        } for img in images],
+        'category_stats': category_stats,
+    })
 
 
-@docx_bp.route('/analyze-single/<task_id>/<int:index>', methods=['POST'])
-def analyze_single(task_id, index):
-    if task_id not in analysis_tasks:
-        return jsonify({'success': False, 'error': '任务不存在，请重新上传'})
+def _save_parsed_ref(task_id):
+    """Save reference to the latest parsed task."""
+    ref_path = os.path.join(_parsed_dir(), '.last_parsed')
+    os.makedirs(_parsed_dir(), exist_ok=True)
+    with open(ref_path, 'w') as f:
+        f.write(task_id)
 
-    task = analysis_tasks[task_id]
-    img = next((x for x in task['images'] if x['index'] == index), None)
-    if not img:
-        return jsonify({'success': False, 'error': '图片不存在'})
 
-    try:
-        logger.info(f"单张分析 [{task_id}] #{index}: {img['filename']}")
-        ai_result = analyze_image_with_ai(img['filepath'], img.get('context', ''))
-        task['results'][str(index)] = ai_result
-        task_service.save_results(Config.TASKS_DIR, task_id, {str(index): ai_result})
-        task_service.generate_analysis_report(Config.TASKS_DIR, task_id)
+def _get_latest_parsed_task_id():
+    """Get the task_id of the most recently parsed document."""
+    ref_path = os.path.join(_parsed_dir(), '.last_parsed')
+    if os.path.exists(ref_path):
+        with open(ref_path, 'r') as f:
+            return f.read().strip()
+    return None
 
-        return jsonify({
-            'success': True,
-            'index': index,
-            'result': ai_result,
-        })
-    except Exception as e:
-        logger.error(f"单张分析失败: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)})
+
+@docx_bp.route('/parsed-folder', methods=['GET'])
+def get_parsed_folder():
+    """Return info about the latest parsed images folder."""
+    task_id = _get_latest_parsed_task_id()
+    if not task_id:
+        return jsonify({'success': False, 'error': '没有解析过的文档'})
+
+    parsed_task_dir = _parsed_dir(task_id)
+    if not os.path.exists(parsed_task_dir):
+        return jsonify({'success': False, 'error': '解析文件夹不存在，请重新上传文档'})
+
+    images = []
+    for fname in sorted(os.listdir(parsed_task_dir)):
+        if not fname.startswith('.') and os.path.isfile(os.path.join(parsed_task_dir, fname)):
+            fpath = os.path.join(parsed_task_dir, fname)
+            images.append({
+                'filename': fname,
+                'size': os.path.getsize(fpath),
+            })
+
+    # Load task data for category info
+    task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+    category_stats = {}
+    image_figure_map = {}
+    if task_data:
+        for img in task_data.get('images', []):
+            cat = img.get('guessed_category', '其他')
+            category_stats[cat] = category_stats.get(cat, 0) + 1
+            if img.get('parsed_filename') or img.get('figure_name'):
+                image_figure_map[img.get('parsed_filename', img.get('filename', ''))] = {
+                    'figure_name': img.get('figure_name', ''),
+                    'guessed_category': img.get('guessed_category', '其他'),
+                    'page_number': img.get('page_number', 1),
+                    'index': img.get('index', 0),
+                }
+
+    # Enrich image list with figure_name and page_number
+    for img_info in images:
+        mapped = image_figure_map.get(img_info['filename'], {})
+        img_info['figure_name'] = mapped.get('figure_name', '')
+        img_info['guessed_category'] = mapped.get('guessed_category', '其他')
+        img_info['page_number'] = mapped.get('page_number', 1)
+        img_info['index'] = mapped.get('index', 0)
+
+    return jsonify({
+        'success': True,
+        'task_id': task_id,
+        'folder': parsed_task_dir,
+        'image_count': len(images),
+        'images': images,
+        'category_stats': category_stats,
+        'doc_name': task_data.get('original_filename', '') if task_data else '',
+    })
+
+
+@docx_bp.route('/parsed-images/<task_id>', methods=['GET'])
+def list_parsed_images(task_id):
+    """List all images in a parsed folder."""
+    parsed_task_dir = _parsed_dir(task_id)
+    if not os.path.exists(parsed_task_dir):
+        return jsonify({'success': False, 'error': '解析文件夹不存在'})
+
+    images = []
+    for fname in sorted(os.listdir(parsed_task_dir)):
+        if not fname.startswith('.') and os.path.isfile(os.path.join(parsed_task_dir, fname)):
+            fpath = os.path.join(parsed_task_dir, fname)
+            images.append({
+                'filename': fname,
+                'size': os.path.getsize(fpath),
+                'url': f'/api/docx/parsed-image/{task_id}/{fname}',
+            })
+
+    return jsonify({
+        'success': True,
+        'task_id': task_id,
+        'images': images,
+        'total': len(images),
+    })
+
+
+@docx_bp.route('/parsed-image/<task_id>/<filename>', methods=['GET'])
+def serve_parsed_image(task_id, filename):
+    """Serve an image from the parsed folder."""
+    parsed_task_dir = _parsed_dir(task_id)
+    p = os.path.join(parsed_task_dir, filename)
+    if not os.path.exists(p):
+        return jsonify({'success': False, 'error': '文件不存在'}), 404
+    ext = os.path.splitext(filename)[1].lower()
+    mime = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+            '.bmp': 'image/bmp', '.gif': 'image/gif', '.webp': 'image/webp'}
+    return send_file(p, mimetype=mime.get(ext, 'image/png'))
 
 
 @docx_bp.route('/status/<task_id>', methods=['GET'])
 def get_status(task_id):
-    if task_id not in analysis_tasks:
+    """Get simple status for a task."""
+    task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+    if not task_data:
         return jsonify({'success': False, 'error': '任务不存在'})
 
-    task = analysis_tasks[task_id]
+    category_stats = {}
+    for img in task_data.get('images', []):
+        cat = img.get('guessed_category', '其他')
+        category_stats[cat] = category_stats.get(cat, 0) + 1
+
     return jsonify({
         'success': True,
         'task_id': task_id,
-        'status': task.get('status', 'unknown'),
-        'total_images': task['total_images'],
-        'batch_running': task.get('batch_running', False),
-        'batch_progress': task.get('batch_progress', 0),
-        'batch_total': task.get('batch_total', 0),
-        'batch_status': task.get('batch_status', ''),
-        'batch_summary': task.get('batch_summary', ''),
-        'batch_error_count': task.get('batch_error_count', 0),
-        'results': task.get('batch_results', task.get('results', {})),
-    })
-
-
-@docx_bp.route('/status/<task_id>/stream', methods=['GET'])
-def get_status_stream(task_id):
-    if task_id not in analysis_tasks:
-        return jsonify({'success': False, 'error': '任务不存在'})
-
-    def event_stream():
-        pq = progress_queues.get(task_id)
-        if not pq:
-            task = analysis_tasks.get(task_id)
-            if task:
-                yield f"data: {json.dumps({'type': 'snapshot', 'progress': task.get('batch_progress', 0), 'total': task.get('total_images', 0), 'results': task.get('batch_results', task.get('results', {})), 'batch_running': task.get('batch_running', False), 'batch_summary': task.get('batch_summary', ''), 'batch_error_count': task.get('batch_error_count', 0), 'status': task.get('status', 'unknown')})}\n\n"
-            yield "data: {\"type\":\"done\",\"reason\":\"no_queue\"}\n\n"
-            return
-
-        while True:
-            try:
-                msg = pq.get(timeout=30)
-                yield f"data: {msg}\n\n"
-                data = json.loads(msg)
-                if data.get('type') in ('done', 'error'):
-                    break
-            except queue.Empty:
-                yield f"data: {json.dumps({'type': 'ping'})}\n\n"
-
-    return Response(
-        stream_with_context(event_stream()),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no',
-            'Connection': 'keep-alive',
-        }
-    )
-
-
-@docx_bp.route('/save-images/<task_id>', methods=['POST'])
-def save_images(task_id):
-    """Copy selected extracted images to a user-specified folder."""
-    if task_id not in analysis_tasks:
-        try:
-            task_data = task_service.load_task(Config.TASKS_DIR, task_id)
-            if not task_data:
-                return jsonify({'success': False, 'error': '任务不存在'})
-            analysis_tasks[task_id] = task_data
-        except Exception:
-            return jsonify({'success': False, 'error': '任务不存在'})
-
-    task = analysis_tasks[task_id]
-    data = request.get_json(silent=True) or {}
-    indices = data.get('indices', [])
-    target_folder = data.get('folder', '').strip()
-
-    if not indices:
-        return jsonify({'success': False, 'error': '未选择任何图片'})
-    if not target_folder:
-        return jsonify({'success': False, 'error': '未指定保存目录'})
-
-    # Create target folder if it doesn't exist
-    try:
-        os.makedirs(target_folder, exist_ok=True)
-    except OSError as e:
-        return jsonify({'success': False, 'error': f'无法创建目录: {str(e)}'})
-
-    images = task.get('images', [])
-    saved = []
-    failed = []
-
-    for idx in indices:
-        img = next((x for x in images if x['index'] == idx), None)
-        if not img:
-            failed.append({'index': idx, 'error': '图片信息不存在'})
-            continue
-
-        src = img.get('filepath', '')
-        if not src or not os.path.exists(src):
-            # Also try images dir
-            alt_src = os.path.join(_images_dir(task_id), img['filename'])
-            if os.path.exists(alt_src):
-                src = alt_src
-            else:
-                failed.append({'index': idx, 'filename': img['filename'], 'error': '源文件不存在'})
-                continue
-
-        dst = os.path.join(target_folder, img['filename'])
-        try:
-            shutil.copy2(src, dst)
-            saved.append({'index': idx, 'filename': img['filename'], 'dst': dst})
-        except OSError as e:
-            failed.append({'index': idx, 'filename': img['filename'], 'error': str(e)})
-
-    return jsonify({
-        'success': True,
-        'saved': saved,
-        'failed': failed,
-        'total': len(indices),
-        'saved_count': len(saved),
-        'target_folder': target_folder,
+        'status': task_data.get('status', 'extracted'),
+        'total_images': task_data.get('total_images', 0),
+        'images': [{
+            'index': img['index'],
+            'filename': img.get('parsed_filename', img.get('filename', '')),
+            'original_filename': img.get('filename', ''),
+            'context': img.get('context', ''),
+            'guessed_category': img.get('guessed_category', '其他'),
+            'figure_name': img.get('figure_name', ''),
+            'page_number': img.get('page_number', 1),
+        } for img in task_data.get('images', [])],
+        'category_stats': category_stats,
     })
 
 
@@ -516,6 +317,7 @@ def get_image(task_id, filename):
     possible_dirs = [
         _images_dir(task_id),
         _task_dir(task_id),
+        _parsed_dir(task_id),
     ]
     for d in possible_dirs:
         p = os.path.join(d, filename)
@@ -525,86 +327,6 @@ def get_image(task_id, filename):
                     '.bmp': 'image/bmp', '.gif': 'image/gif', '.webp': 'image/webp'}
             return send_file(p, mimetype=mime.get(ext, 'image/png'))
     return jsonify({'success': False, 'error': '文件不存在'}), 404
-
-
-@docx_bp.route('/report/<task_id>/html', methods=['GET'])
-def get_report_html(task_id):
-    """Return the analysis report as a standalone printable HTML page."""
-    if task_id not in analysis_tasks:
-        try:
-            task_data = task_service.load_task(Config.TASKS_DIR, task_id)
-            if not task_data:
-                return '任务不存在', 404
-            analysis_tasks[task_id] = task_data
-        except Exception:
-            return '任务不存在', 404
-
-    task = analysis_tasks[task_id]
-    summary = task.get('batch_summary', '')
-    doc_name = task.get('original_filename', '未知文档')
-
-    html = f'''<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>分析报告 - {doc_name}</title>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<style>
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
-    color: #1f2937; line-height: 1.8; font-size: 14px; background: #fff;
-  }}
-  .toolbar {{
-    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-    background: #1e1b4b; color: white; padding: 10px 24px;
-    display: flex; align-items: center; justify-content: space-between;
-    box-shadow: 0 2px 8px rgba(0,0,0,.15);
-  }}
-  .toolbar h2 {{ font-size: 16px; font-weight: 600; }}
-  .toolbar button {{
-    padding: 8px 20px; border: none; border-radius: 6px; font-size: 14px;
-    font-weight: 600; cursor: pointer; background: #6366f1; color: white;
-  }}
-  .toolbar button:hover {{ background: #4f46e5; }}
-  .content {{
-    max-width: 900px; margin: 70px auto 40px; padding: 24px 32px;
-  }}
-  .content h1 {{ font-size: 22px; margin: 20px 0 10px; color: #1e293b; }}
-  .content h2 {{ font-size: 18px; margin: 18px 0 8px; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }}
-  .content h3 {{ font-size: 15px; margin: 14px 0 6px; color: #334155; }}
-  .content table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
-  .content th, .content td {{ border: 1px solid #e2e8f0; padding: 6px 12px; text-align: left; font-size: 13px; }}
-  .content th {{ background: #f8fafc; font-weight: 600; }}
-  .content blockquote {{ border-left: 3px solid #6366f1; padding: 4px 12px; color: #64748b; margin: 10px 0; background: #f8fafc; }}
-  .content strong {{ color: #1e293b; }}
-  .content hr {{ border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }}
-  .content p {{ margin: 6px 0; }}
-  .content ul, .content ol {{ padding-left: 24px; margin: 8px 0; }}
-  .content li {{ margin: 2px 0; }}
-  @media print {{
-    .toolbar {{ display: none; }}
-    .content {{ margin-top: 0; padding: 0; max-width: 100%; }}
-    body {{ font-size: 12px; }}
-  }}
-</style>
-</head>
-<body>
-<div class="toolbar">
-  <h2>分析报告 - {doc_name}</h2>
-  <button onclick="window.print()">打印 / 导出PDF</button>
-</div>
-<div class="content" id="report-content"></div>
-<script>
-  var markdown = {json.dumps(summary, ensure_ascii=False)};
-  document.getElementById('report-content').innerHTML = marked.parse(markdown);
-  // Auto-trigger print dialog after render
-  setTimeout(function() {{ window.print(); }}, 800);
-</script>
-</body>
-</html>'''
-    return html
 
 
 @docx_bp.route('/tasks', methods=['GET'])
@@ -623,21 +345,27 @@ def load_task(task_id):
         task_data = task_service.load_task(Config.TASKS_DIR, task_id)
         if not task_data:
             return jsonify({'success': False, 'error': '任务不存在'})
-        analysis_tasks[task_id] = task_data
+
+        category_stats = {}
+        for img in task_data.get('images', []):
+            cat = img.get('guessed_category', '其他')
+            category_stats[cat] = category_stats.get(cat, 0) + 1
+
         return jsonify({
             'success': True,
             'task_id': task_id,
-            'total_images': task_data['total_images'],
+            'total_images': task_data.get('total_images', 0),
             'images': [{
                 'index': img['index'],
-                'filename': img['filename'],
+                'filename': img.get('parsed_filename', img.get('filename', '')),
+                'original_filename': img.get('filename', ''),
                 'context': img.get('context', ''),
                 'guessed_category': img.get('guessed_category', '其他'),
+                'figure_name': img.get('figure_name', ''),
+                'page_number': img.get('page_number', 1),
             } for img in task_data.get('images', [])],
-            'results': task_data.get('results', {}),
-            'batch_summary': task_data.get('batch_summary', ''),
+            'category_stats': category_stats,
             'status': task_data.get('status', 'extracted'),
-            'has_report': os.path.exists(os.path.join(_task_dir(task_id), 'analysis_report.md')),
         })
     except Exception as e:
         logger.error(f"加载任务失败: {e}")
@@ -647,260 +375,18 @@ def load_task(task_id):
 @docx_bp.route('/task/<task_id>', methods=['DELETE'])
 def delete_task(task_id):
     try:
-        analysis_tasks.pop(task_id, None)
         task_service.delete_task(Config.TASKS_DIR, task_id)
+        # Also clean up parsed folder
+        parsed_task_dir = _parsed_dir(task_id)
+        if os.path.exists(parsed_task_dir):
+            shutil.rmtree(parsed_task_dir)
+        # Clear ref if it points to this task
+        ref_path = os.path.join(_parsed_dir(), '.last_parsed')
+        if os.path.exists(ref_path):
+            with open(ref_path, 'r') as f:
+                if f.read().strip() == task_id:
+                    os.remove(ref_path)
         return jsonify({'success': True, 'message': '任务已删除'})
     except Exception as e:
         logger.error(f"删除任务失败: {e}")
         return jsonify({'success': False, 'error': str(e)})
-
-
-def _safe_str(val, max_len=None):
-    """Normalize AI result value to string, handling dict/list/string types."""
-    if isinstance(val, dict):
-        # Extract overall rating and key points from dict-style evaluation
-        grade = val.get('总体评价等级') or val.get('总体评价') or ''
-        if not grade:
-            for v in val.values():
-                if isinstance(v, str) and any(g in v for g in ('优', '良', '中', '差')):
-                    import re
-                    m = re.search(r'[优良中差](?=\s|$|。|，|,)', v)
-                    if m:
-                        grade = m.group()
-                        break
-        parts = [f'{k}: {v}' for k, v in val.items()]
-        result = '；'.join(parts)
-        if grade and '总体评价' not in result:
-            result += f'；总体评价：{grade}'
-        return result[:max_len] if max_len else result
-    if isinstance(val, list):
-        result = '；'.join(str(v) for v in val)
-        return result[:max_len] if max_len else result
-    if not isinstance(val, str):
-        val = str(val)
-    return val[:max_len] if max_len else val
-
-
-def _extract_grade(evaluation):
-    """Extract overall rating (优/良/中/差) from evaluation value."""
-    text = _safe_str(evaluation)
-    import re
-    for pattern in [r'总体评价[等级]*[：:]\s*([优良中差])', r'总体评价[等级]*[：:]\s*(\S+)',
-                    r'[（(]([优良中差])[）)]', r'([优良中差])\s*$', r'评级[：:]\s*([优良中差])']:
-        m = re.search(pattern, text)
-        if m:
-            g = m.group(1)
-            if g in ('优', '良', '中', '差'):
-                return g
-            if '优' in g:
-                return '优'
-            if '良' in g:
-                return '良'
-            if '差' in g:
-                return '差'
-    if '优' in text:
-        return '优'
-    if '良' in text:
-        return '良'
-    if '差' in text:
-        return '差'
-    return '中'
-
-
-def generate_summary(all_results):
-    """Generate summary report. Always uses data-driven base (no hallucination),
-    optionally appends LLM insights if API call succeeds."""
-    import requests
-    from collections import Counter
-
-    total = len(all_results)
-    if total == 0:
-        return "暂无分析结果，无法生成汇总报告。"
-
-    type_counts = Counter()
-    grade_counts = Counter()
-    content_lines = []
-    key_findings = []
-
-    for idx, r in sorted(all_results.items(), key=lambda x: int(x[0])):
-        img_type = r.get('image_type', '未知')
-        type_counts[img_type] += 1
-
-        summary = _safe_str(r.get('summary', '无'), 150)
-        evaluation = r.get('evaluation', '')
-        grade = _extract_grade(evaluation)
-        grade_counts[grade] += 1
-
-        error_tag = ' [分析异常]' if r.get('_error') else ''
-        content_lines.append(
-            f"图片{idx}: 类型[{img_type}] 评级[{grade}]{error_tag}\n"
-            f"  摘要: {summary}\n"
-            f"  评估: {_safe_str(evaluation, 120)}"
-        )
-
-        # Collect notable findings
-        dims = r.get('dimensions_specs', {})
-        if isinstance(dims, dict) and dims.get('found') and dims.get('items'):
-            for item in dims['items']:
-                name = item.get('name', '')
-                dim = item.get('dimension', '')
-                qty = item.get('quantity', '')
-                detail = f"{name}: {dim}" if dim else name
-                if qty:
-                    detail += f" ({qty})"
-                key_findings.append(f"- 图片{idx}[{img_type}]: {detail}")
-
-        schedule = r.get('construction_schedule', {})
-        if isinstance(schedule, dict) and schedule.get('has_schedule'):
-            start = schedule.get('start_date', '')
-            end = schedule.get('end_date', '')
-            if start or end:
-                key_findings.append(f"- 图片{idx}[{img_type}]: 工期 {start} ~ {end}")
-
-    # Always build data-driven report first (guaranteed accurate)
-    base_report = _build_fallback_summary(all_results, type_counts, grade_counts)
-
-    # Append key findings section
-    if key_findings:
-        base_report += "\n\n### 六、关键施工参数汇总\n"
-        base_report += '\n'.join(key_findings[:30])  # limit to avoid bloat
-        base_report += '\n'
-
-    # Try LLM for additional insights
-    api_keys = Config.SILICONFLOW_API_KEY_LIST
-    summary_model = os.environ.get('SILICONFLOW_SUMMARY_MODEL', '')
-
-    if not summary_model or not api_keys:
-        return base_report
-
-    text = '\n\n'.join(content_lines)
-    type_lines = '\n'.join(f"  - {t}: {c} 张" for t, c in type_counts.most_common())
-    grade_lines = ', '.join(f'{g}{c}张' for g, c in grade_counts.most_common())
-
-    prompt = f"""请对以下施工方案图纸分析结果进行综合评审。
-
-图纸总数：{total} 张
-类型分布：{type_lines}
-评级分布：{grade_lines}
-
-各图分析：
-{text}
-
-请用3-5句话总结：这套图纸的整体质量水平、最突出的亮点、最需要关注的问题。直接给结论，不要用JSON。"""
-
-    api_key = random.choice(api_keys)
-    try:
-        resp = requests.post(
-            Config.SILICONFLOW_API_URL,
-            json={
-                "model": summary_model,
-                "messages": [
-                    {"role": "system", "content": "你是专业建筑工程图纸审查专家。请给出简短、具体、有洞察力的评审意见。"},
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": 600,
-                "temperature": 0.3,
-            },
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            timeout=60,
-        )
-        if resp.status_code == 200:
-            llm_insight = resp.json()['choices'][0]['message']['content']
-            if llm_insight and len(llm_insight) > 20:
-                base_report += f"\n\n---\n### AI 综合评审意见\n\n{llm_insight}\n"
-            return base_report
-        logger.warning(f"汇总API返回 {resp.status_code}")
-        return base_report
-    except Exception as e:
-        logger.warning(f"AI评审补充失败（报告数据部分不受影响）: {e}")
-        return base_report
-
-
-def _build_fallback_summary(all_results, type_counts=None, grade_counts=None):
-    """Build summary from raw data when LLM is unavailable. Never crashes."""
-    from collections import Counter
-    try:
-        total = len(all_results)
-
-        if type_counts is None:
-            type_counts = Counter()
-            for r in all_results.values():
-                type_counts[r.get('image_type', '未知')] += 1
-
-        if grade_counts is None:
-            grade_counts = Counter()
-            for r in all_results.values():
-                grade_counts[_extract_grade(r.get('evaluation', ''))] += 1
-
-        error_count = sum(1 for r in all_results.values() if r.get('_error'))
-
-        overall_grade = '良'
-        if grade_counts.get('优', 0) >= total * 0.7:
-            overall_grade = '优'
-        elif grade_counts.get('差', 0) >= total * 0.3:
-            overall_grade = '差'
-        elif grade_counts.get('中', 0) + grade_counts.get('差', 0) >= total * 0.5:
-            overall_grade = '中'
-
-        lines = []
-        lines.append("## 施工方案图纸质量综合评估报告\n")
-        lines.append(f"> 生成方式：系统自动汇总 | 图纸总数：{total} 张 | 异常数：{error_count} 张\n")
-
-        lines.append("### 一、总体概述\n")
-        lines.append(f"本项目施工方案包含 **{total}** 张图纸，涵盖 **{len(type_counts)}** 种类型。")
-        lines.append(f"整体质量评定：**{overall_grade}**。")
-        lines.append("")
-
-        lines.append("### 二、图纸类型分布\n")
-        lines.append("| 类型 | 数量 |")
-        lines.append("|------|------|")
-        for t, c in type_counts.most_common():
-            lines.append(f"| {t} | {c} |")
-        lines.append("")
-
-        lines.append("### 三、质量评级统计\n")
-        grade_order = ['优', '良', '中', '差']
-        lines.append("| 评级 | 数量 | 占比 |")
-        lines.append("|------|------|------|")
-        for g in grade_order:
-            c = grade_counts.get(g, 0)
-            if c > 0:
-                pct = round(c / total * 100)
-                lines.append(f"| {g} | {c} | {pct}% |")
-        lines.append("")
-
-        lines.append("### 四、各图片评估详情\n")
-        for idx in sorted(all_results.keys(), key=lambda x: int(x)):
-            r = all_results[idx]
-            img_type = r.get('image_type', '未知')
-            grade = _extract_grade(r.get('evaluation', ''))
-            error_mark = ' ⚠️分析异常' if r.get('_error') else ''
-            lines.append(f"**图片{idx}** [{img_type}] 评级：{grade}{error_mark}")
-            summary = _safe_str(r.get('summary', ''), 200)
-            if summary:
-                lines.append(f"> {summary}")
-            evaluation = _safe_str(r.get('evaluation', ''), 200)
-            if evaluation:
-                lines.append(f"评估：{evaluation}")
-            lines.append("")
-
-        lines.append("### 五、关键发现与建议\n")
-        lines.append(f"- 共识别 **{len(type_counts)}** 种图纸类型，覆盖面{'较全' if len(type_counts) >= 8 else '一般'}。")
-        lines.append(f"- 质量分布：{' | '.join(f'{g}级{c}张' for g, c in grade_counts.most_common())}。")
-
-        if grade_counts.get('差', 0) > 0:
-            lines.append(f"- ⚠️ **{grade_counts['差']} 张图纸评级为差**，建议重点复核并重新出图。")
-        if grade_counts.get('中', 0) > 0:
-            lines.append(f"- {grade_counts['中']} 张图纸评级为中，建议优化完善。")
-        if error_count > 0:
-            lines.append(f"- {error_count} 张图片AI分析异常，建议单独重新分析或人工审核。")
-
-        lines.append("")
-        lines.append("---")
-        lines.append("*本报告由系统基于AI分析结果自动生成，评级仅供参考，最终审查意见以人工复核为准。*")
-
-        return '\n'.join(lines)
-    except Exception as e:
-        logger.error(f"fallback汇总也失败了: {e}", exc_info=True)
-        return f"汇总生成失败: {str(e)}\n\n已完成 {len(all_results)} 张图片分析，请查看各图片详情。"
-

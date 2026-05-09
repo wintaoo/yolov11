@@ -44,6 +44,7 @@ backend/app/cache_ai/
 backend/uploads/
 backend/docx_images/
 backend/tasks/
+backend/parsed_images/
 
 # 后端动态端口
 backend/.port
