@@ -397,6 +397,9 @@ const selectImage = async (idx: number) => {
     originalImage.value = URL.createObjectURL(fileNode.raw)
     await nextTick()
   }
+
+  // 选中/切换图片后自动发起检测
+  handleDetect()
 }
 
 const showPreviousImage = () => { if (hasPreviousImage.value) selectImage(currentImageIndex.value - 1) }
