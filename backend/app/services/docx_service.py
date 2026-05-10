@@ -154,32 +154,50 @@ def extract_images_from_docx(file_path, output_dir):
                     para_text = text
                     break
 
-            # Gather caption from the containing paragraph + nearby paragraphs
-            caption = ""
+            # Gather context: before (preceding paragraph), after (following paragraphs)
+            context_before = ""
+            context_after = ""
+            if para_flat_idx >= 0:
+                # Paragraph before the image (if not the image's own paragraph)
+                if para_flat_idx > 0:
+                    t = all_paras[para_flat_idx - 1][1]
+                    if t:
+                        context_before = t.strip()
+                # Paragraphs after the image
+                for i in range(para_flat_idx + 1, min(len(all_paras), para_flat_idx + 3)):
+                    t = all_paras[i][1]
+                    if t:
+                        context_after += t + " "
+                context_after = context_after.strip()
+
+            # Full context (before + image para + after) for classification
+            full_context = ""
             if para_flat_idx >= 0:
                 start = max(0, para_flat_idx - 1)
                 end = min(len(all_paras), para_flat_idx + 3)
                 for i in range(start, end):
                     t = all_paras[i][1]
                     if t:
-                        caption += t + " "
-            caption = caption.strip()
+                        full_context += t + " "
+            full_context = full_context.strip()
 
-            figure_name = extract_figure_name(caption)
+            figure_name = extract_figure_name(full_context)
             page_number = page_map.get(para_flat_idx, 1) if para_flat_idx >= 0 else 1
 
             images.append({
                 'index': image_idx,
                 'filename': filename,
                 'filepath': filepath,
-                'context': caption[:500],
+                'context': full_context[:500],
+                'context_before': context_before[:300],
+                'context_after': context_after[:300],
                 'ext': ext,
                 'figure_name': figure_name,
                 'page_number': page_number,
                 'para_position': para_flat_idx,
             })
 
-            logger.info(f"提取图片 {image_idx}: {filename} 图名={figure_name or '(无)'} 页码≈{page_number} (上下文: {caption[:80]}...)")
+            logger.info(f"提取图片 {image_idx}: {filename} 图名={figure_name or '(无)'} 页码≈{page_number} (上文: {context_before[:40] or '(无)'} | 下文: {context_after[:40] or '(无)'})")
 
         except Exception as e:
             logger.error(f"提取图片失败 rel_id={rel_id}: {e}")

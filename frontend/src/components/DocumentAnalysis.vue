@@ -114,9 +114,13 @@
                 </el-tag>
               </div>
             </div>
-            <div class="info-section" v-if="selectedImage.context">
-              <h4>文档上下文</h4>
-              <p>{{ selectedImage.context }}</p>
+            <div class="info-section" v-if="selectedImage.context_before">
+              <h4>文档上文</h4>
+              <p>{{ selectedImage.context_before }}</p>
+            </div>
+            <div class="info-section" v-if="selectedImage.context_after">
+              <h4>文档下文</h4>
+              <p>{{ selectedImage.context_after }}</p>
             </div>
           </div>
         </aside>
