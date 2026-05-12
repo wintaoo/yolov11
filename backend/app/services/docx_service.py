@@ -247,8 +247,8 @@ def extract_images_from_docx(file_path, output_dir):
             full_context = full_context.strip()
 
             figure_name = extract_figure_name(full_context)
-            if len(figure_name) > 15:
-                figure_name = figure_name[:15]
+            if len(figure_name) > 20:
+                figure_name = figure_name[:20]
             page_number = page_map.get(para_flat_idx, 1) if para_flat_idx >= 0 else 1
 
             images.append({
