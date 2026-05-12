@@ -46,8 +46,9 @@ backend/docx_images/
 backend/tasks/
 backend/parsed_images/
 
-# 后端动态端口
+# 动态端口文件
 backend/.port
+backend/.frontend-port
 
 # 训练结果
 runs/

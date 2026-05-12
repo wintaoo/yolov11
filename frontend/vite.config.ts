@@ -9,15 +9,31 @@ function getBackendPort(): number {
     const port = parseInt(fs.readFileSync(portFile, 'utf-8').trim(), 10)
     if (port > 0 && port < 65536) return port
   } catch {}
-  // 回退：扫描 5000-5009 找到第一个空闲端口（与后端逻辑一致）
-  return 5000
+  return 5050
 }
 
 const backendPort = getBackendPort()
 console.log(`[vite] 后端端口检测: ${backendPort}`)
 
+const frontendPortFile = path.resolve(__dirname, '..', 'backend', '.frontend-port')
+const startPort = parseInt(process.env.FRONTEND_PORT || '8088', 10)
+
 export default defineConfig({
-    plugins: [vue()],
+    plugins: [
+        vue(),
+        {
+            name: 'write-frontend-port',
+            configureServer(server) {
+                server.httpServer?.once('listening', () => {
+                    const addr = server.httpServer?.address()
+                    if (addr && typeof addr === 'object') {
+                        fs.writeFileSync(frontendPortFile, String(addr.port))
+                        console.log(`[vite] 前端端口已写入: ${addr.port}`)
+                    }
+                })
+            }
+        }
+    ],
     resolve: {
         alias: {
             '@': path.resolve(__dirname, 'src'),
@@ -26,7 +42,8 @@ export default defineConfig({
         }
     },
     server: {
-        port: 8080,
+        port: startPort,
+        strictPort: false,
         host: true,
         proxy: {
             '/api': {

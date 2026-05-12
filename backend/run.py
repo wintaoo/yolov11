@@ -17,7 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 PORT_FILE = os.path.join(current_dir, '.port')
-DEFAULT_PORT = int(os.environ.get('PORT', 5000))
+DEFAULT_PORT = int(os.environ.get('PORT', 5050))
 PORT_RANGE = 10  # 从默认端口开始尝试 10 个端口
 
 

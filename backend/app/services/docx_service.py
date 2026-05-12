@@ -116,6 +116,79 @@ def _build_page_map(paras):
     return page_map, total_pages
 
 
+MAX_CONTEXT_CHARS = 100
+MAX_CONTEXT_WITH_NEARBY_IMAGE = 80
+
+
+def _para_has_image(elem, image_rel_ids):
+    """Check if a paragraph element contains any image relationship reference."""
+    xml_str = etree.tostring(elem, encoding='unicode')
+    for rid in image_rel_ids:
+        if re.search(rf'\b{re.escape(rid)}\b', xml_str):
+            return True
+    return False
+
+
+def _extract_context_before(para_flat_idx, all_paras, image_rel_ids):
+    """Extract up to 100 chars of text before an image, or 80 if another image is nearby."""
+    chars = []
+    char_count = 0
+    hit_image = False
+
+    for i in range(para_flat_idx - 1, -1, -1):
+        elem, text = all_paras[i]
+        if _para_has_image(elem, image_rel_ids):
+            hit_image = True
+            break
+        if text:
+            remaining = MAX_CONTEXT_CHARS - char_count
+            if len(text) <= remaining:
+                chars.insert(0, text)
+                char_count += len(text)
+            else:
+                chars.insert(0, text[-remaining:])
+                char_count = MAX_CONTEXT_CHARS
+                break
+        if char_count >= MAX_CONTEXT_CHARS:
+            break
+
+    result = ' '.join(chars).strip()
+    limit = MAX_CONTEXT_WITH_NEARBY_IMAGE if hit_image else MAX_CONTEXT_CHARS
+    if len(result) > limit:
+        result = result[-limit:]
+    return result
+
+
+def _extract_context_after(para_flat_idx, all_paras, image_rel_ids):
+    """Extract up to 100 chars of text after an image, or 80 if another image is nearby."""
+    chars = []
+    char_count = 0
+    hit_image = False
+
+    for i in range(para_flat_idx + 1, len(all_paras)):
+        elem, text = all_paras[i]
+        if _para_has_image(elem, image_rel_ids):
+            hit_image = True
+            break
+        if text:
+            remaining = MAX_CONTEXT_CHARS - char_count
+            if len(text) <= remaining:
+                chars.append(text)
+                char_count += len(text)
+            else:
+                chars.append(text[:remaining])
+                char_count = MAX_CONTEXT_CHARS
+                break
+        if char_count >= MAX_CONTEXT_CHARS:
+            break
+
+    result = ' '.join(chars).strip()
+    limit = MAX_CONTEXT_WITH_NEARBY_IMAGE if hit_image else MAX_CONTEXT_CHARS
+    if len(result) > limit:
+        result = result[:limit]
+    return result
+
+
 def extract_images_from_docx(file_path, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     doc = Document(file_path)
@@ -125,11 +198,13 @@ def extract_images_from_docx(file_path, output_dir):
     all_paras = _collect_all_paras(doc)
     page_map, total_pages = _build_page_map(all_paras)
 
+    # Pre-collect all image rel IDs for nearby-image detection
     rels = doc.part.rels
-    for rel_id, rel in rels.items():
-        if "image" not in rel.reltype:
-            continue
+    image_rel_ids = {rid for rid, r in rels.items() if "image" in r.reltype}
+
+    for rel_id in image_rel_ids:
         try:
+            rel = rels[rel_id]
             image_data = rel.target_part.blob
             ext = rel.target_part.partname.split('.')[-1]
             if ext.lower() not in ('png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp'):
@@ -143,7 +218,6 @@ def extract_images_from_docx(file_path, output_dir):
                 f.write(image_data)
 
             # Find the paragraph that contains this image's relationship ID.
-            # Use \b word boundaries so "rId1" does NOT match inside "rId10".
             para_flat_idx = -1
             para_text = ""
             rel_pattern = re.compile(rf'\b{re.escape(rel_id)}\b')
@@ -154,21 +228,12 @@ def extract_images_from_docx(file_path, output_dir):
                     para_text = text
                     break
 
-            # Gather context: before (preceding paragraph), after (following paragraphs)
+            # 上下文提取：上文/下文各最多100字，若遇其他图片则限80字
             context_before = ""
             context_after = ""
             if para_flat_idx >= 0:
-                # Paragraph before the image (if not the image's own paragraph)
-                if para_flat_idx > 0:
-                    t = all_paras[para_flat_idx - 1][1]
-                    if t:
-                        context_before = t.strip()
-                # Paragraphs after the image
-                for i in range(para_flat_idx + 1, min(len(all_paras), para_flat_idx + 3)):
-                    t = all_paras[i][1]
-                    if t:
-                        context_after += t + " "
-                context_after = context_after.strip()
+                context_before = _extract_context_before(para_flat_idx, all_paras, image_rel_ids)
+                context_after = _extract_context_after(para_flat_idx, all_paras, image_rel_ids)
 
             # Full context (before + image para + after) for classification
             full_context = ""
