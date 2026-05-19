@@ -41,6 +41,7 @@ def save_task(tasks_root, task_id, task_data):
         'content_md5': task_data.get('content_md5', ''),
         'status': task_data.get('status', 'extracted'),
         'total_images': task_data.get('total_images', 0),
+        'duplicates_removed': task_data.get('duplicates_removed', 0),
         'images': [{
             'index': img['index'],
             'filename': img['filename'],
@@ -52,6 +53,7 @@ def save_task(tasks_root, task_id, task_data):
             'classification_signals': img.get('classification_signals', {}),
             'figure_name': img.get('figure_name', ''),
             'page_number': img.get('page_number', 1),
+            'manual_label': img.get('manual_label', ''),
         } for img in task_data.get('images', [])],
         'batch_summary': task_data.get('batch_summary', ''),
         'created_at': task_data.get('created_at', datetime.now().isoformat()),
@@ -206,6 +208,7 @@ def list_tasks(tasks_root):
                 'task_id': name,
                 'original_filename': meta.get('original_filename', '未知文档'),
                 'total_images': meta.get('total_images', 0),
+                'duplicates_removed': meta.get('duplicates_removed', 0),
                 'status': meta.get('status', 'extracted'),
                 'result_count': result_count,
                 'has_summary': has_summary,

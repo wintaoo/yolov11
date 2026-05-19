@@ -28,6 +28,15 @@
           <el-icon><FolderOpened /></el-icon>
           从解析文件加载
         </el-button>
+        <el-button
+          size="small"
+          type="warning"
+          plain
+          @click="openDocsDialog"
+        >
+          <el-icon><FolderOpened /></el-icon>
+          从 docs 文件夹选择
+        </el-button>
         <span class="file-count" v-if="imageFiles.length || serverImages.length">
           {{ currentImageIndex + 1 }} / {{ totalImageCount }}
         </span>
@@ -199,6 +208,46 @@
         </label>
       </div>
     </div>
+
+    <!-- Docs 文件夹选择对话框 -->
+    <el-dialog v-model="showDocsDialog" title="从 docs 文件夹选择投标文件" width="520px" :close-on-click-modal="false">
+      <div class="docs-dialog-body">
+        <div class="docs-folder-path">
+          <el-icon :size="14"><Folder /></el-icon>
+          <span>{{ docsFolder }}</span>
+        </div>
+        <div class="docs-empty" v-if="docsFiles.length === 0 && !docsLoading">
+          <el-icon :size="32"><FolderOpened /></el-icon>
+          <p>docs 文件夹为空，请将 .doc / .docx 文件放入项目根目录下的 docs 文件夹</p>
+        </div>
+        <div class="docs-loading" v-if="docsLoading">
+          <el-icon :size="24" class="loading-icon"><Loading /></el-icon>
+          <span>加载中...</span>
+        </div>
+        <div class="docs-file-list" v-if="docsFiles.length > 0">
+          <div
+            v-for="f in docsFiles"
+            :key="f.name"
+            class="docs-file-item"
+            :class="{ selected: selectedDocsFile === f.name }"
+            @click="selectedDocsFile = f.name"
+          >
+            <el-icon :size="20"><Document /></el-icon>
+            <div class="docs-file-info">
+              <span class="docs-file-name">{{ f.name }}</span>
+              <span class="docs-file-size">{{ formatFileSize(f.size) }}</span>
+            </div>
+            <el-icon v-if="selectedDocsFile === f.name" :size="18" color="#6366f1"><Check /></el-icon>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showDocsDialog = false">取消</el-button>
+        <el-button type="primary" @click="processDocsFile" :disabled="!selectedDocsFile" :loading="docsProcessing">
+          解析并加载图片
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -206,7 +255,8 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import {
   FolderAdd, FolderOpened, VideoPlay, Download, Delete,
-  Picture, PictureFilled, ArrowLeft, ArrowRight
+  Picture, PictureFilled, ArrowLeft, ArrowRight, Document,
+  Check, Loading, Folder
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
@@ -268,6 +318,123 @@ const hasCurrentImage = computed(() => {
 
 const hasPreviousImage = computed(() => currentImageIndex.value > 0)
 const hasNextImage = computed(() => currentImageIndex.value < totalImageCount.value - 1)
+
+// Docs folder dialog
+const showDocsDialog = ref(false)
+const docsFiles = ref<any[]>([])
+const docsLoading = ref(false)
+const docsProcessing = ref(false)
+const selectedDocsFile = ref('')
+const docsFolder = ref('')
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+const openDocsDialog = async () => {
+  showDocsDialog.value = true
+  selectedDocsFile.value = ''
+  docsLoading.value = true
+  try {
+    const res = await axios.get('/api/docx/docs-files')
+    if (res.data.success) {
+      docsFiles.value = res.data.files || []
+      docsFolder.value = res.data.folder || ''
+    }
+  } catch {
+    docsFiles.value = []
+  } finally {
+    docsLoading.value = false
+  }
+}
+
+const processDocsFile = async () => {
+  if (!selectedDocsFile.value) return
+  docsProcessing.value = true
+  try {
+    const res = await axios.post('/api/docx/upload-from-docs', {
+      filename: selectedDocsFile.value,
+    })
+    if (res.data.success) {
+      showDocsDialog.value = false
+      if (res.data.status === 'processing') {
+        // 轮询等待后台处理完成
+        const tid = res.data.task_id
+        const startTime = Date.now()
+        const POLL_INTERVAL = 1500
+        const MAX_WAIT = 300000
+        await new Promise<void>((resolve, reject) => {
+          const poll = async () => {
+            const elapsed = Math.round((Date.now() - startTime) / 1000)
+            try {
+              const statusRes = await axios.get(`/api/docx/status/${tid}`)
+              if (statusRes.data.status === 'extracted') {
+                resolve()
+              } else if (statusRes.data.status === 'error') {
+                reject(new Error('解析失败，请重试'))
+              } else if (Date.now() - startTime > MAX_WAIT) {
+                reject(new Error('解析超时，请稍后重试'))
+              } else {
+                setTimeout(poll, POLL_INTERVAL)
+              }
+            } catch {
+              if (Date.now() - startTime > MAX_WAIT) {
+                reject(new Error('解析超时'))
+              } else {
+                setTimeout(poll, POLL_INTERVAL)
+              }
+            }
+          }
+          poll()
+        })
+      }
+      // 加载解析结果
+      await loadFromParsedFolderById(res.data.task_id)
+    } else {
+      ElMessage.error(res.data.error || '解析失败')
+    }
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message || '解析失败')
+  } finally {
+    docsProcessing.value = false
+  }
+}
+
+const loadFromParsedFolderById = async (tid: string) => {
+  try {
+    const res = await axios.get(`/api/docx/parsed-images/${tid}`)
+    if (res.data.success && res.data.images.length > 0) {
+      serverMode.value = true
+      parsedTaskId.value = res.data.task_id
+      // Update parsedInfo with full data from parsed-folder
+      try {
+        const folderRes = await axios.get('/api/docx/parsed-folder')
+        if (folderRes.data.success) {
+          parsedInfo.value = folderRes.data
+          parsedFolder.value = folderRes.data.folder || parsedFolder.value
+        }
+      } catch {}
+      serverImages.value = res.data.images.map((img: any) => ({
+        ...img,
+        figure_name: img.figure_name || '',
+        guessed_category: img.guessed_category || '其他',
+        classification_confidence: img.classification_confidence || 0,
+        page_number: img.page_number || 1,
+      }))
+      imageFiles.value = []
+      clearResults()
+      currentImageIndex.value = 0
+      selectImage(0)
+      ElMessage.success(`已加载 ${res.data.total} 张布置图`)
+    } else {
+      ElMessage.warning('解析文件夹中没有图片')
+    }
+  } catch (err: any) {
+    ElMessage.error('加载解析图片失败')
+  }
+}
 
 const categoryColors: Record<string, string> = {
   '垂直运输机械': '#ef4444',
@@ -675,4 +842,32 @@ onUnmounted(() => {
   box-shadow: 0 4px 14px rgba(99,102,241,.35);
 }
 .hero-btn:hover { background: #4f46e5; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(99,102,241,.4); }
+
+/* Docs dialog */
+.docs-dialog-body { min-height: 180px; }
+.docs-folder-path {
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+  background: #f1f5f9; border-radius: 6px; font-size: 13px; color: #64748b;
+  margin-bottom: 16px; word-break: break-all;
+}
+.docs-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 32px 20px; text-align: center; color: #94a3b8; font-size: 14px;
+}
+.docs-loading {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 32px; color: #94a3b8; font-size: 14px;
+}
+.loading-icon { animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.docs-file-list { display: flex; flex-direction: column; gap: 6px; max-height: 360px; overflow-y: auto; }
+.docs-file-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; transition: all .15s;
+}
+.docs-file-item:hover { background: #f8fafc; border-color: #c7d2fe; }
+.docs-file-item.selected { background: #eef2ff; border-color: #6366f1; }
+.docs-file-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.docs-file-name { font-size: 14px; font-weight: 500; color: #1e293b; }
+.docs-file-size { font-size: 12px; color: #94a3b8; }
 </style>

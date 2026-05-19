@@ -24,6 +24,7 @@ class Config:
     UPLOAD_FOLDER = UPLOAD_FOLDER
     TASKS_DIR = os.path.join(BASE_DIR, 'tasks')
     PARSED_IMAGES_DIR = os.path.join(BASE_DIR, 'parsed_images')
+    DOCS_DIR = os.path.join(ROOT_DIR, 'docs')
     LOG_FILE = os.path.join(BASE_DIR, 'logs', 'app.log')
 
     API_PREFIX = '/api'

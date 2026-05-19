@@ -21,6 +21,7 @@
               <div class="history-meta">
                 <el-tag size="small" :type="t.status === 'extracted' ? 'success' : 'info'">已解析</el-tag>
                 <span>{{ t.total_images }} 张图片</span>
+                <span v-if="t.duplicates_removed" class="dedup-hint">去重 {{ t.duplicates_removed }}</span>
               </div>
             </div>
             <div class="history-actions" @click.stop>
@@ -48,12 +49,28 @@
           </svg>
         </div>
         <h3>上传投标文件进行解析</h3>
-        <p>上传 .docx 格式的投标文件，系统将自动提取图片并按规则匹配分类，图片自动存储供布置图检测使用</p>
-        <label class="upload-btn">
-          <el-icon :size="18"><Upload /></el-icon>
-          <span>选择 .docx 文件</span>
-          <input type="file" ref="docxInput" accept=".docx" @change="handleUpload" hidden />
-        </label>
+        <p>上传 .doc / .docx 格式的投标文件，系统将自动提取图片并按规则匹配分类，图片自动存储供布置图检测使用</p>
+        <div class="upload-actions">
+          <label class="upload-btn">
+            <el-icon :size="18"><Upload /></el-icon>
+            <span>选择 Word 文件</span>
+            <input type="file" ref="docxInput" accept=".docx,.doc" @change="handleUpload" hidden />
+          </label>
+          <button class="docs-btn" @click="openDocsDialog">
+            <el-icon :size="18"><FolderOpened /></el-icon>
+            <span>从 docs 文件夹选择</span>
+          </button>
+        </div>
+        <div class="upload-progress" v-if="uploading">
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" :style="{ width: uploadPercent + '%' }"></div>
+          </div>
+          <span class="progress-text">{{ uploadStatus }}</span>
+        </div>
+        <div class="dedup-banner" v-if="duplicatesRemoved > 0">
+          <el-icon :size="16"><CircleCheck /></el-icon>
+          已自动去除 {{ duplicatesRemoved }} 张重复图片（页眉/页脚等重复内容）
+        </div>
       </div>
     </div>
 
@@ -62,6 +79,9 @@
         <div class="status-info">
           <span class="task-id">任务 #{{ taskId }}</span>
           <span class="image-count">共 {{ totalImages }} 张图片</span>
+          <el-tag v-if="duplicatesRemoved > 0" size="small" type="success" effect="plain">
+            去重 {{ duplicatesRemoved }} 张
+          </el-tag>
         </div>
         <div class="status-actions">
           <el-button size="small" type="danger" plain @click="resetTask">返回列表</el-button>
@@ -74,20 +94,21 @@
             v-for="img in images"
             :key="img.index"
             class="image-card"
-            :class="{ selected: selectedImg === img.index }"
+            :class="{ selected: selectedImg === img.index, 'has-manual-label': !!img.manual_label }"
             @click="selectImage(img)"
           >
             <img :src="`/api/docx/image/${taskId}/${img.filename}`" class="card-img" loading="lazy" />
             <div class="card-info">
               <span class="card-figname" :title="img.figure_name">{{ img.figure_name || '#' + img.index }}</span>
               <span class="card-cat">
-                {{ img.guessed_category || '其他' }}
+                {{ getEffectiveCategory(img) }}
                 <span class="card-conf" v-if="img.classification_confidence > 0" :class="confidenceClass(img.classification_confidence)">
                   {{ (img.classification_confidence * 100).toFixed(0) }}%
                 </span>
               </span>
             </div>
             <div class="card-page">第{{ img.index }}张</div>
+            <div class="card-manual-dot" v-if="img.manual_label" title="人工标注: {{ img.manual_label }}">✎</div>
           </div>
         </div>
 
@@ -102,8 +123,8 @@
                 <strong>{{ selectedImage.figure_name }}</strong>
               </div>
               <div class="info-meta-row">
-                <el-tag :type="getTypeColor(selectedImage.guessed_category)" size="large">
-                  {{ selectedImage.guessed_category || '未分类' }}
+                <el-tag :type="getTypeColor(getEffectiveCategory(selectedImage))" size="large">
+                  {{ getEffectiveCategory(selectedImage) || '未分类' }}
                 </el-tag>
                 <el-tag v-if="selectedImage.classification_confidence > 0" :type="confidenceTagType(selectedImage.classification_confidence)" size="large" effect="dark">
                   置信度 {{ (selectedImage.classification_confidence * 100).toFixed(0) }}%
@@ -114,6 +135,58 @@
                 </el-tag>
               </div>
             </div>
+
+            <!-- 手动标注区域 -->
+            <div class="info-section label-section">
+              <h4>
+                <el-icon :size="14"><Edit /></el-icon>
+                图片类别标注
+              </h4>
+              <div class="label-row">
+                <el-select
+                  v-model="labelForm.category"
+                  placeholder="选择预定义类别"
+                  clearable
+                  filterable
+                  size="small"
+                  style="flex: 1;"
+                  @change="onLabelCategoryChange"
+                >
+                  <el-option
+                    v-for="cat in PREDEFINED_CATEGORIES"
+                    :key="cat"
+                    :label="cat"
+                    :value="cat"
+                  />
+                  <el-option label="其他（自输入）" value="__custom__" />
+                </el-select>
+              </div>
+              <div class="label-row" v-if="labelForm.category === '__custom__'">
+                <el-input
+                  v-model="labelForm.customCategory"
+                  placeholder="请输入自定义类别名称"
+                  size="small"
+                  style="flex: 1;"
+                  @keyup.enter="saveLabel"
+                />
+              </div>
+              <div class="label-row label-actions">
+                <span class="label-hint" v-if="selectedImage.manual_label">
+                  当前标注: <strong>{{ selectedImage.manual_label }}</strong>
+                </span>
+                <span class="label-hint" v-else-if="selectedImage.guessed_category">
+                  系统判定: <strong>{{ selectedImage.guessed_category }}</strong>
+                </span>
+                <el-button size="small" type="primary" @click="saveLabel" :loading="labelSaving">
+                  <el-icon :size="14"><Check /></el-icon>
+                  保存标签
+                </el-button>
+                <el-button v-if="selectedImage.manual_label" size="small" type="warning" plain @click="clearLabel">
+                  清除标签
+                </el-button>
+              </div>
+            </div>
+
             <div class="info-section" v-if="selectedImage.context_before">
               <h4>文档上文</h4>
               <p>{{ selectedImage.context_before }}</p>
@@ -145,23 +218,95 @@
         </div>
       </div>
     </div>
+
+    <!-- Docs 文件夹文件选择对话框 -->
+    <el-dialog v-model="showDocsDialog" title="从 docs 文件夹选择投标文件" width="560px" :close-on-click-modal="false">
+      <div class="docs-dialog-body">
+        <div class="docs-folder-path">
+          <el-icon :size="14"><Folder /></el-icon>
+          <span>{{ docsFolder }}</span>
+        </div>
+        <div class="docs-empty" v-if="docsFiles.length === 0 && !docsLoading">
+          <el-icon :size="32"><FolderOpened /></el-icon>
+          <p>docs 文件夹为空，请将 .doc / .docx 文件放入项目根目录下的 docs 文件夹</p>
+          <el-button size="small" type="primary" @click="openDocsFolder">
+            <el-icon><FolderOpened /></el-icon>
+            打开 docs 文件夹
+          </el-button>
+        </div>
+        <div class="docs-loading" v-if="docsLoading">
+          <el-icon :size="24" class="loading-icon"><Loading /></el-icon>
+          <span>加载中...</span>
+        </div>
+        <div class="docs-file-list" v-if="docsFiles.length > 0">
+          <div
+            v-for="f in docsFiles"
+            :key="f.name"
+            class="docs-file-item"
+            :class="{ selected: selectedDocsFile === f.name }"
+            @click="selectedDocsFile = f.name"
+          >
+            <el-icon :size="20"><Document /></el-icon>
+            <div class="docs-file-info">
+              <span class="docs-file-name">{{ f.name }}</span>
+              <span class="docs-file-size">{{ formatFileSize(f.size) }}</span>
+            </div>
+            <el-icon v-if="selectedDocsFile === f.name" :size="18" color="#6366f1"><Check /></el-icon>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showDocsDialog = false">取消</el-button>
+        <el-button type="primary" @click="processDocsFile" :disabled="!selectedDocsFile" :loading="uploading">
+          解析此文件
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { Upload, Picture, Clock, FolderOpened, Delete, Document } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { Upload, Picture, Clock, FolderOpened, Delete, Document, Edit, Check, CircleCheck, Loading, Folder } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
+
+const PREDEFINED_CATEGORIES = [
+  '周边环境图', '进度计划图', '分区规划图', '基础结构图',
+  '临时用电布置图', '临时用水布置图', '土方工程图',
+  '主体结构图', '装饰装修图', '总平面布置图',
+  '施工计划图', '临建设施平面布置图', '施工分区图',
+]
 
 const docxInput = ref<HTMLInputElement | null>(null)
 const taskId = ref('')
 const totalImages = ref(0)
+const duplicatesRemoved = ref(0)
 const images = ref<any[]>([])
 const categoryStats = ref<Record<string, number>>({})
 const selectedImg = ref<number | null>(null)
 const selectedImage = ref<any>(null)
 const taskList = ref<any[]>([])
+
+// Upload progress
+const uploading = ref(false)
+const uploadPercent = ref(0)
+const uploadStatus = ref('')
+
+// Docs folder dialog
+const showDocsDialog = ref(false)
+const docsFiles = ref<any[]>([])
+const docsLoading = ref(false)
+const selectedDocsFile = ref('')
+const docsFolder = ref('')
+
+// Manual labeling
+const labelSaving = ref(false)
+const labelForm = ref({ category: '', customCategory: '' })
+
+const getEffectiveCategory = (img: any) => {
+  return img.manual_label || img.guessed_category || '其他'
+}
 
 const sortedCategoryStats = computed(() => {
   const entries = Object.entries(categoryStats.value)
@@ -209,15 +354,94 @@ const getTypeColor = (t: string) => {
   return m[t] || 'info'
 }
 
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+// Watch for image selection to pre-fill label form
+watch(selectedImage, (img) => {
+  if (img) {
+    const existingLabel = img.manual_label || ''
+    if (existingLabel && PREDEFINED_CATEGORIES.includes(existingLabel)) {
+      labelForm.value = { category: existingLabel, customCategory: '' }
+    } else if (existingLabel) {
+      labelForm.value = { category: '__custom__', customCategory: existingLabel }
+    } else {
+      labelForm.value = { category: '', customCategory: '' }
+    }
+  }
+})
+
+// 轮询等待后台处理完成
+const waitForTask = async (tid: string, startTime: number) => {
+  const POLL_INTERVAL = 1500  // 1.5秒轮询一次
+  const MAX_WAIT = 300000     // 最多等5分钟
+
+  return new Promise<void>((resolve, reject) => {
+    const poll = async () => {
+      const elapsed = Math.round((Date.now() - startTime) / 1000)
+      uploadStatus.value = `后台解析中... 已等待 ${elapsed} 秒`
+      try {
+        const res = await axios.get(`/api/docx/status/${tid}`)
+        if (res.data.status === 'extracted') {
+          uploadStatus.value = '解析完成，加载结果中...'
+          // 加载完整任务数据
+          const loadRes = await axios.post(`/api/docx/task/${tid}/load`)
+          if (loadRes.data.success) {
+            openTask(loadRes.data)
+            resolve()
+          } else {
+            reject(new Error(loadRes.data.error || '加载结果失败'))
+          }
+        } else if (res.data.status === 'error') {
+          reject(new Error('解析失败，请重试'))
+        } else if (Date.now() - startTime > MAX_WAIT) {
+          reject(new Error('解析超时，请稍后在历史记录中查看'))
+        } else {
+          setTimeout(poll, POLL_INTERVAL)
+        }
+      } catch (err: any) {
+        // 网络错误时继续重试
+        if (Date.now() - startTime > MAX_WAIT) {
+          reject(new Error('解析超时，请稍后在历史记录中查看'))
+        } else {
+          setTimeout(poll, POLL_INTERVAL)
+        }
+      }
+    }
+    poll()
+  })
+}
+
 const handleUpload = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
   const fd = new FormData()
   fd.append('file', file)
+
+  uploading.value = true
+  uploadPercent.value = 0
+  uploadStatus.value = '上传中...'
+  const startTime = Date.now()
+
   try {
-    const res = await axios.post('/api/docx/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+    const res = await axios.post('/api/docx/upload', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (e) => {
+        if (e.total) {
+          uploadPercent.value = Math.round((e.loaded / e.total) * 100)
+          uploadStatus.value = `上传中 ${uploadPercent.value}%`
+        }
+      },
+    })
     if (res.data.success) {
-      if (res.data.reused) {
+      if (res.data.status === 'processing') {
+        // 后台处理中（含重复文件仍在处理的情况），开始轮询
+        uploadPercent.value = 100
+        await waitForTask(res.data.task_id, startTime)
+      } else if (res.data.reused) {
         ElMessageBox.confirm(
           '检测到重复文件，是否打开历史解析记录？',
           '检测到重复文件',
@@ -234,6 +458,9 @@ const handleUpload = async (event: Event) => {
   } catch (err: any) {
     ElMessage.error(err.message || '上传失败')
   } finally {
+    uploading.value = false
+    uploadPercent.value = 0
+    uploadStatus.value = ''
     if (docxInput.value) docxInput.value.value = ''
   }
 }
@@ -241,12 +468,147 @@ const handleUpload = async (event: Event) => {
 const openTask = (data: any) => {
   taskId.value = data.task_id
   totalImages.value = data.total_images
+  duplicatesRemoved.value = data.duplicates_removed || 0
   images.value = data.images
   categoryStats.value = data.category_stats || {}
   if (data.reused) {
     ElMessage.success(`已加载历史解析记录，共 ${data.total_images} 张图片`)
   } else {
-    ElMessage.success(`投标文件解析完成，共提取 ${data.total_images} 张图片，已自动存储`)
+    const dedupMsg = data.duplicates_removed ? `，已自动去重 ${data.duplicates_removed} 张` : ''
+    ElMessage.success(`投标文件解析完成，共提取 ${data.total_images} 张图片${dedupMsg}，已自动存储`)
+  }
+}
+
+// Docs folder functions
+const openDocsDialog = async () => {
+  showDocsDialog.value = true
+  selectedDocsFile.value = ''
+  docsLoading.value = true
+  try {
+    const res = await axios.get('/api/docx/docs-files')
+    if (res.data.success) {
+      docsFiles.value = res.data.files || []
+      docsFolder.value = res.data.folder || ''
+    }
+  } catch {
+    docsFiles.value = []
+  } finally {
+    docsLoading.value = false
+  }
+}
+
+const openDocsFolder = () => {
+  // 无法在浏览器中直接打开文件系统，提示用户路径
+  ElMessage.info(`请将 .docx 文件放入: ${docsFolder.value || '项目根目录/docs'}`)
+}
+
+const processDocsFile = async () => {
+  if (!selectedDocsFile.value) return
+  uploading.value = true
+  uploadStatus.value = '解析中...'
+  const startTime = Date.now()
+  try {
+    const res = await axios.post('/api/docx/upload-from-docs', {
+      filename: selectedDocsFile.value,
+    })
+    if (res.data.success) {
+      showDocsDialog.value = false
+      if (res.data.reused) {
+        ElMessageBox.confirm(
+          '检测到重复文件，是否打开历史解析记录？',
+          '检测到重复文件',
+          { confirmButtonText: '打开历史结果', cancelButtonText: '取消', type: 'info' }
+        ).then(() => {
+          openTask(res.data)
+        }).catch(() => {})
+      } else if (res.data.status === 'processing') {
+        await waitForTask(res.data.task_id, startTime)
+      } else {
+        openTask(res.data)
+      }
+    } else {
+      ElMessage.error(res.data.error || '解析失败')
+    }
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message || '解析失败')
+  } finally {
+    uploading.value = false
+    uploadStatus.value = ''
+  }
+}
+
+// Manual labeling functions
+const onLabelCategoryChange = (val: string) => {
+  if (val !== '__custom__') {
+    labelForm.value.customCategory = ''
+  }
+}
+
+const saveLabel = async () => {
+  if (!selectedImage.value || !taskId.value) return
+  let label = ''
+  if (labelForm.value.category === '__custom__') {
+    label = labelForm.value.customCategory.trim()
+    if (!label) {
+      ElMessage.warning('请输入自定义类别名称')
+      return
+    }
+  } else if (labelForm.value.category) {
+    label = labelForm.value.category
+  } else {
+    ElMessage.warning('请选择或输入类别')
+    return
+  }
+
+  labelSaving.value = true
+  try {
+    const res = await axios.post(`/api/docx/task/${taskId.value}/label`, {
+      image_index: selectedImage.value.index,
+      manual_label: label,
+    })
+    if (res.data.success) {
+      // Update local state
+      selectedImage.value.manual_label = label
+      const imgInList = images.value.find(i => i.index === selectedImage.value.index)
+      if (imgInList) {
+        imgInList.manual_label = label
+      }
+      categoryStats.value = res.data.category_stats || {}
+      ElMessage.success('标签已保存')
+    } else {
+      ElMessage.error(res.data.error || '保存失败')
+    }
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message || '保存失败')
+  } finally {
+    labelSaving.value = false
+  }
+}
+
+const clearLabel = async () => {
+  if (!selectedImage.value || !taskId.value) return
+  labelSaving.value = true
+  try {
+    const res = await axios.post(`/api/docx/task/${taskId.value}/label`, {
+      image_index: selectedImage.value.index,
+      manual_label: '',
+    })
+    if (res.data.success) {
+      selectedImage.value.manual_label = ''
+      const imgInList = images.value.find(i => i.index === selectedImage.value.index)
+      if (imgInList) {
+        imgInList.manual_label = ''
+      }
+      categoryStats.value = res.data.category_stats || {}
+      labelForm.value = { category: '', customCategory: '' }
+      ElMessage.success('标签已清除')
+    } else {
+      ElMessage.error(res.data.error || '清除失败')
+    }
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.error || err.message || '清除失败')
+  } finally {
+    labelSaving.value = false
   }
 }
 
@@ -259,6 +621,7 @@ const resetTask = () => {
   taskId.value = ''
   images.value = []
   categoryStats.value = {}
+  duplicatesRemoved.value = 0
   selectedImg.value = null
   selectedImage.value = null
   totalImages.value = 0
@@ -280,6 +643,7 @@ const loadTask = async (tid: string) => {
     if (res.data.success) {
       taskId.value = res.data.task_id
       totalImages.value = res.data.total_images
+      duplicatesRemoved.value = res.data.duplicates_removed || 0
       images.value = res.data.images
       categoryStats.value = res.data.category_stats || {}
       ElMessage.success(`已加载历史记录，共 ${res.data.total_images} 张图片`)
@@ -329,14 +693,16 @@ onMounted(() => {
 .history-info { flex: 1; min-width: 0; }
 .history-name { font-size: 14px; font-weight: 600; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-meta { display: flex; gap: 10px; align-items: center; margin-top: 5px; font-size: 12px; color: #94a3b8; flex-wrap: wrap; }
+.dedup-hint { color: #16a34a; font-weight: 500; }
 .history-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 .upload-card {
   text-align: center; background: white; border-radius: 16px; padding: 48px 40px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.06); max-width: 480px; width: 100%;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06); max-width: 520px; width: 100%;
 }
 .upload-card h3 { margin: 16px 0 8px; font-size: 18px; color: #1e293b; }
 .upload-card p { color: #94a3b8; font-size: 14px; margin-bottom: 24px; line-height: 1.6; }
+.upload-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .upload-btn {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 12px 28px; background: #6366f1; color: white; border-radius: 10px;
@@ -344,6 +710,29 @@ onMounted(() => {
   box-shadow: 0 4px 14px rgba(99,102,241,.35);
 }
 .upload-btn:hover { background: #4f46e5; transform: translateY(-1px); }
+.docs-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 28px; background: white; color: #6366f1; border: 2px solid #6366f1;
+  border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all .2s;
+}
+.docs-btn:hover { background: #eef2ff; }
+
+.upload-progress { margin-top: 20px; width: 100%; }
+.progress-bar-track {
+  width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%; background: linear-gradient(90deg, #6366f1, #818cf8);
+  border-radius: 3px; transition: width .3s ease;
+}
+.progress-text { font-size: 12px; color: #64748b; margin-top: 6px; display: block; }
+
+.dedup-banner {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 16px; padding: 8px 16px; background: #f0fdf4;
+  border: 1px solid #bbf7d0; border-radius: 8px;
+  font-size: 13px; color: #16a34a; font-weight: 500;
+}
 
 .status-bar {
   display: flex; align-items: center; justify-content: space-between;
@@ -355,11 +744,11 @@ onMounted(() => {
 .image-count { color: #64748b; font-size: 14px; }
 .status-actions { display: flex; gap: 8px; }
 
-.content-layout { display: flex; gap: 16px; min-height: 500px; }
+.content-layout { display: flex; gap: 16px; align-items: flex-start; }
 
 .image-grid {
   flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px; align-content: start; min-width: 0; max-height: 600px; overflow-y: auto;
+  gap: 10px; min-width: 0; max-height: calc(100vh - 260px); overflow-y: auto;
   background: white; border-radius: 12px; padding: 14px;
   box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
@@ -369,7 +758,12 @@ onMounted(() => {
 }
 .image-card:hover { border-color: #c7d2fe; }
 .image-card.selected { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,.2); }
-.card-img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
+.image-card.has-manual-label { border-color: #a5b4fc; }
+.image-card.has-manual-label::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: #22c55e; z-index: 2;
+}
+.card-img { width: 100%; min-height: 100px; aspect-ratio: 4/3; object-fit: cover; display: block; }
 .card-info { display: flex; justify-content: space-between; padding: 6px 8px; font-size: 11px; }
 .card-figname { color: #1e293b; font-weight: 600; font-size: 10px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-cat { color: #6366f1; font-weight: 500; font-size: 10px; max-width: 55px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; flex-direction: column; gap: 1px; }
@@ -378,10 +772,14 @@ onMounted(() => {
 .card-conf.conf-mid { color: #d97706; }
 .card-conf.conf-low { color: #dc2626; }
 .card-page { position: absolute; bottom: 4px; right: 4px; font-size: 9px; color: #94a3b8; background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+.card-manual-dot {
+  position: absolute; top: 4px; right: 4px; font-size: 10px; color: #22c55e;
+  background: #f0fdf4; padding: 0 4px; border-radius: 3px; font-weight: 700;
+}
 
 .detail-panel {
   width: 400px; flex-shrink: 0; background: white; border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow-y: auto; max-height: 600px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow-y: auto;
 }
 .empty-detail { display: flex; align-items: center; justify-content: center; }
 .empty-hint { display: flex; flex-direction: column; align-items: center; gap: 12px; color: #94a3b8; font-size: 14px; padding: 40px 20px; text-align: center; }
@@ -396,10 +794,51 @@ onMounted(() => {
 .info-section h4 { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
 .info-section p { font-size: 13px; color: #334155; line-height: 1.7; }
 
+/* Labeling section */
+.label-section {
+  background: #fafafe; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px;
+}
+.label-section h4 {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 10px; color: #6366f1;
+}
+.label-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.label-row:last-child { margin-bottom: 0; }
+.label-actions { align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.label-hint { font-size: 12px; color: #94a3b8; flex: 1; }
+.label-hint strong { color: #6366f1; }
+
 .category-summary { background: white; border-radius: 12px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 .category-summary h4 { font-size: 13px; margin-bottom: 10px; color: #475569; }
 .cat-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .cat-chip { padding: 4px 12px; border-radius: 14px; font-size: 13px; background: #f1f5f9; color: #475569; }
 .cat-chip strong { color: #1e293b; margin-left: 2px; }
 .confidence-summary { margin-top: 10px; font-size: 13px; color: #64748b; }
+
+/* Docs dialog */
+.docs-dialog-body { min-height: 200px; }
+.docs-folder-path {
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+  background: #f1f5f9; border-radius: 6px; font-size: 13px; color: #64748b;
+  margin-bottom: 16px; word-break: break-all;
+}
+.docs-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 32px 20px; text-align: center; color: #94a3b8; font-size: 14px;
+}
+.docs-loading {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 32px; color: #94a3b8; font-size: 14px;
+}
+.loading-icon { animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.docs-file-list { display: flex; flex-direction: column; gap: 6px; max-height: 360px; overflow-y: auto; }
+.docs-file-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; transition: all .15s;
+}
+.docs-file-item:hover { background: #f8fafc; border-color: #c7d2fe; }
+.docs-file-item.selected { background: #eef2ff; border-color: #6366f1; }
+.docs-file-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.docs-file-name { font-size: 14px; font-weight: 500; color: #1e293b; }
+.docs-file-size { font-size: 12px; color: #94a3b8; }
 </style>

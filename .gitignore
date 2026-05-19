@@ -38,6 +38,9 @@ venv/
 frontend/node_modules/
 frontend/dist/
 
+# docs文件夹（用户存放投标文件）
+docs/
+
 # 缓存和上传
 backend/cache/
 backend/app/cache_ai/

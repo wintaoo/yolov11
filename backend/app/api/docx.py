@@ -8,6 +8,7 @@ import json
 import hashlib
 import shutil
 import logging
+import threading
 from datetime import datetime
 
 docx_bp = Blueprint('docx', __name__)
@@ -39,54 +40,10 @@ def _file_md5(file_storage):
     return h.hexdigest()
 
 
-@docx_bp.route('/upload', methods=['POST'])
-def upload_docx():
+def _process_in_background(task_id, docx_path, img_dir, original_filename):
+    """后台线程：提取图片、分类、保存任务、复制到 parsed_images"""
     try:
-        if 'file' not in request.files:
-            return jsonify({'success': False, 'error': '未找到上传的文件'})
-
-        file = request.files['file']
-        if not file.filename.lower().endswith('.docx'):
-            return jsonify({'success': False, 'error': '仅支持 .docx 格式的Word文档'})
-
-        safe_name = re.sub(r'[\\/:*?"<>|]', '_', file.filename.rsplit('.', 1)[0])[:50]
-
-        existing_tasks = task_service.list_tasks(Config.TASKS_DIR)
-        same_doc = next((t for t in existing_tasks if t['original_filename'] == file.filename), None)
-
-        if same_doc:
-            task_id = same_doc['task_id']
-            logger.info(f"检测到重复文档 [{file.filename}], 复用任务: {task_id}")
-            task_data = task_service.load_task(Config.TASKS_DIR, task_id)
-            if task_data:
-                return _build_upload_response(task_data, task_id, reused=True)
-            else:
-                return jsonify({'success': False, 'error': '任务数据读取失败'})
-
-        content_md5 = _file_md5(file)
-        existing_by_hash = next(
-            (t for t in existing_tasks
-             if task_service.load_task_meta_field(Config.TASKS_DIR, t['task_id'], 'content_md5') == content_md5),
-            None
-        )
-        if existing_by_hash:
-            task_id = existing_by_hash['task_id']
-            logger.info(f"检测到内容相同文档 (MD5={content_md5[:8]}), 复用任务: {task_id}")
-        else:
-            task_id = safe_name
-            base_id = task_id
-            counter = 1
-            while os.path.exists(_task_dir(task_id)):
-                task_id = f"{base_id}_{counter}"
-                counter += 1
-
-        td = _task_dir(task_id)
-        img_dir = _images_dir(task_id)
-        os.makedirs(td, exist_ok=True)
-
-        docx_path = os.path.join(td, 'original.docx')
-        file.save(docx_path)
-
+        logger.info(f"后台处理开始 [{task_id}]")
         extract_result = extract_images_from_docx(docx_path, img_dir)
 
         for img in extract_result['images']:
@@ -102,20 +59,19 @@ def upload_docx():
         task_data = {
             'status': 'extracted',
             'task_id': task_id,
-            'original_filename': file.filename,
-            'content_md5': content_md5,
+            'original_filename': original_filename,
+            'content_md5': '',
             'total_images': extract_result['total'],
+            'duplicates_removed': extract_result.get('duplicates_removed', 0),
             'images': extract_result['images'],
             'output_dir': img_dir,
             'results': {},
             'summary': '',
             'created_at': datetime.now().isoformat(),
         }
-
         task_service.save_task(Config.TASKS_DIR, task_id, task_data)
 
-        # Copy extracted images to parsed_images folder for DetectionPanel access
-        # Rename using figure_name when available
+        # 复制到 parsed_images
         parsed_task_dir = _parsed_dir(task_id)
         if os.path.exists(parsed_task_dir):
             shutil.rmtree(parsed_task_dir)
@@ -125,11 +81,10 @@ def upload_docx():
             ext = img.get('ext', os.path.splitext(img['filename'])[1].lstrip('.'))
             figure_name = img.get('figure_name', '')
             if figure_name:
-                safe_name = re.sub(r'[\\/:*?"<>|]', '_', figure_name)[:100]
-                base_filename = f"{safe_name}.{ext}"
+                safe_fn = re.sub(r'[\\/:*?"<>|]', '_', figure_name)[:100]
+                base_filename = f"{safe_fn}.{ext}"
             else:
                 base_filename = img['filename']
-            # Deduplicate: if file exists, append _2, _3, etc.
             dst_filename = base_filename
             collision = 2
             while os.path.exists(os.path.join(parsed_task_dir, dst_filename)):
@@ -141,12 +96,125 @@ def upload_docx():
             if os.path.exists(src):
                 shutil.copy2(src, dst)
 
-        # Save the active parsed task reference
         _save_parsed_ref(task_id)
+        logger.info(f"后台处理完成 [{task_id}]: {extract_result['total']} 张图片")
 
-        logger.info(f"文档解析完成 [{task_id}]: {extract_result['total']} 张图片 -> {parsed_task_dir}")
+    except Exception as e:
+        logger.error(f"后台处理失败 [{task_id}]: {e}", exc_info=True)
+        try:
+            task_service.save_task(Config.TASKS_DIR, task_id, {
+                'status': 'error',
+                'task_id': task_id,
+                'original_filename': original_filename,
+                'content_md5': '',
+                'total_images': 0,
+                'duplicates_removed': 0,
+                'images': [],
+                'output_dir': img_dir,
+                'results': {},
+                'summary': '',
+                'error': str(e),
+                'created_at': datetime.now().isoformat(),
+            })
+        except Exception:
+            pass
 
-        return _build_upload_response(task_data, task_id, reused=False)
+
+@docx_bp.route('/upload', methods=['POST'])
+def upload_docx():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': '未找到上传的文件'})
+
+        file = request.files['file']
+        if not file.filename.lower().endswith(('.docx', '.doc')):
+            return jsonify({'success': False, 'error': '仅支持 .doc / .docx 格式的Word文档'})
+
+        safe_name = re.sub(r'[\\/:*?"<>|]', '_', file.filename.rsplit('.', 1)[0])[:50]
+
+        existing_tasks = task_service.list_tasks(Config.TASKS_DIR)
+        same_doc = next((t for t in existing_tasks if t['original_filename'] == file.filename), None)
+
+        if same_doc:
+            task_id = same_doc['task_id']
+            logger.info(f"检测到重复文档 [{file.filename}], 复用任务: {task_id}")
+            task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+            if task_data:
+                if task_data.get('status') == 'processing':
+                    return jsonify({
+                        'success': True, 'task_id': task_id,
+                        'status': 'processing', 'message': '该文件正在后台解析中...',
+                    })
+                return _build_upload_response(task_data, task_id, reused=True)
+            else:
+                return jsonify({'success': False, 'error': '任务数据读取失败'})
+
+        content_md5 = _file_md5(file)
+        existing_by_hash = next(
+            (t for t in existing_tasks
+             if task_service.load_task_meta_field(Config.TASKS_DIR, t['task_id'], 'content_md5') == content_md5),
+            None
+        )
+        if existing_by_hash:
+            task_id = existing_by_hash['task_id']
+            logger.info(f"检测到内容相同文档 (MD5={content_md5[:8]}), 复用任务: {task_id}")
+            existing_data = task_service.load_task(Config.TASKS_DIR, task_id)
+            if existing_data and existing_data.get('status') == 'processing':
+                return jsonify({
+                    'success': True, 'task_id': task_id,
+                    'status': 'processing', 'message': '该文件正在后台解析中...',
+                })
+        else:
+            task_id = safe_name
+            base_id = task_id
+            counter = 1
+            while os.path.exists(_task_dir(task_id)):
+                task_id = f"{base_id}_{counter}"
+                counter += 1
+
+        td = _task_dir(task_id)
+        img_dir = _images_dir(task_id)
+        os.makedirs(td, exist_ok=True)
+
+        docx_path = os.path.join(td, 'original.docx')
+        file.save(docx_path)
+
+        if not os.path.exists(docx_path):
+            return jsonify({'success': False, 'error': f'文件保存失败，路径不存在: {docx_path}'})
+        if not os.path.getsize(docx_path):
+            return jsonify({'success': False, 'error': '上传的文件为空'})
+
+        # 保存初始任务状态，立即返回
+        task_data = {
+            'status': 'processing',
+            'task_id': task_id,
+            'original_filename': file.filename,
+            'content_md5': content_md5,
+            'total_images': 0,
+            'duplicates_removed': 0,
+            'images': [],
+            'output_dir': img_dir,
+            'results': {},
+            'summary': '',
+            'created_at': datetime.now().isoformat(),
+        }
+        task_service.save_task(Config.TASKS_DIR, task_id, task_data)
+
+        # 后台线程处理
+        thread = threading.Thread(
+            target=_process_in_background,
+            args=(task_id, docx_path, img_dir, file.filename),
+            daemon=True
+        )
+        thread.start()
+
+        logger.info(f"文档已保存，后台处理中 [{task_id}]: {file.filename}")
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'status': 'processing',
+            'message': '文件已上传，正在后台解析...',
+        })
 
     except Exception as e:
         current_app.logger.error(f"DOCX上传失败: {str(e)}", exc_info=True)
@@ -166,6 +234,7 @@ def _build_upload_response(task_data, task_id, reused=False):
         'task_id': task_id,
         'reused': reused,
         'total_images': len(images),
+        'duplicates_removed': task_data.get('duplicates_removed', 0),
         'images': [{
             'index': img['index'],
             'filename': img.get('parsed_filename', img['filename']),
@@ -178,6 +247,7 @@ def _build_upload_response(task_data, task_id, reused=False):
             'classification_signals': img.get('classification_signals', {}),
             'figure_name': img.get('figure_name', ''),
             'page_number': img.get('page_number', 1),
+            'manual_label': img.get('manual_label', ''),
         } for img in images],
         'category_stats': category_stats,
     })
@@ -312,6 +382,7 @@ def get_status(task_id):
         'task_id': task_id,
         'status': task_data.get('status', 'extracted'),
         'total_images': task_data.get('total_images', 0),
+        'duplicates_removed': task_data.get('duplicates_removed', 0),
         'images': [{
             'index': img['index'],
             'filename': img.get('parsed_filename', img.get('filename', '')),
@@ -324,6 +395,7 @@ def get_status(task_id):
             'classification_signals': img.get('classification_signals', {}),
             'figure_name': img.get('figure_name', ''),
             'page_number': img.get('page_number', 1),
+            'manual_label': img.get('manual_label', ''),
         } for img in task_data.get('images', [])],
         'category_stats': category_stats,
     })
@@ -372,6 +444,7 @@ def load_task(task_id):
             'success': True,
             'task_id': task_id,
             'total_images': task_data.get('total_images', 0),
+            'duplicates_removed': task_data.get('duplicates_removed', 0),
             'images': [{
                 'index': img['index'],
                 'filename': img.get('parsed_filename', img.get('filename', '')),
@@ -384,6 +457,7 @@ def load_task(task_id):
                 'classification_signals': img.get('classification_signals', {}),
                 'figure_name': img.get('figure_name', ''),
                 'page_number': img.get('page_number', 1),
+                'manual_label': img.get('manual_label', ''),
             } for img in task_data.get('images', [])],
             'category_stats': category_stats,
             'status': task_data.get('status', 'extracted'),
@@ -410,4 +484,193 @@ def delete_task(task_id):
         return jsonify({'success': True, 'message': '任务已删除'})
     except Exception as e:
         logger.error(f"删除任务失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@docx_bp.route('/docs-files', methods=['GET'])
+def list_docs_files():
+    """列出 docs 文件夹中的所有 Word 文件"""
+    docs_dir = Config.DOCS_DIR
+    if not os.path.exists(docs_dir):
+        return jsonify({'success': True, 'files': [], 'folder': docs_dir})
+    try:
+        files = []
+        for fname in sorted(os.listdir(docs_dir)):
+            if fname.startswith('.'):
+                continue
+            fpath = os.path.join(docs_dir, fname)
+            fname_lower = fname.lower()
+            if os.path.isfile(fpath) and (fname_lower.endswith('.docx') or fname_lower.endswith('.doc')):
+                files.append({
+                    'name': fname,
+                    'size': os.path.getsize(fpath),
+                    'mtime': os.path.getmtime(fpath),
+                })
+        return jsonify({'success': True, 'files': files, 'folder': docs_dir})
+    except Exception as e:
+        logger.error(f"列出docs文件失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@docx_bp.route('/upload-from-docs', methods=['POST'])
+def upload_from_docs():
+    """从 docs 文件夹中选择文件进行解析（避免重复上传大文件）"""
+    try:
+        data = request.get_json() or {}
+        filename = data.get('filename', '')
+        if not filename:
+            return jsonify({'success': False, 'error': '缺少文件名'})
+
+        # 安全检查：防止目录穿越
+        safe_name = os.path.basename(filename)
+        filepath = os.path.join(Config.DOCS_DIR, safe_name)
+        if not os.path.exists(filepath):
+            return jsonify({'success': False, 'error': '文件不存在'})
+        if not safe_name.lower().endswith(('.docx', '.doc')):
+            return jsonify({'success': False, 'error': '仅支持 .doc / .docx 格式'})
+
+        safe_id = re.sub(r'[\\/:*?"<>|]', '_', safe_name.rsplit('.', 1)[0])[:50]
+        content_md5 = _file_md5_path(filepath)
+
+        # 检查重复
+        existing_tasks = task_service.list_tasks(Config.TASKS_DIR)
+        same_doc = next((t for t in existing_tasks if t['original_filename'] == safe_name), None)
+        if same_doc:
+            task_id = same_doc['task_id']
+            logger.info(f"检测到重复文档 [{safe_name}], 复用任务: {task_id}")
+            task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+            if task_data:
+                if task_data.get('status') == 'processing':
+                    return jsonify({
+                        'success': True, 'task_id': task_id,
+                        'status': 'processing', 'message': '该文件正在后台解析中...',
+                    })
+                return _build_upload_response(task_data, task_id, reused=True)
+
+        existing_by_hash = next(
+            (t for t in existing_tasks
+             if task_service.load_task_meta_field(Config.TASKS_DIR, t['task_id'], 'content_md5') == content_md5),
+            None
+        )
+        if existing_by_hash:
+            task_id = existing_by_hash['task_id']
+            logger.info(f"检测到内容相同文档 (MD5={content_md5[:8]}), 复用任务: {task_id}")
+            existing_data = task_service.load_task(Config.TASKS_DIR, task_id)
+            if existing_data and existing_data.get('status') == 'processing':
+                return jsonify({
+                    'success': True, 'task_id': task_id,
+                    'status': 'processing', 'message': '该文件正在后台解析中...',
+                })
+        else:
+            task_id = safe_id
+            base_id = task_id
+            counter = 1
+            while os.path.exists(_task_dir(task_id)):
+                task_id = f"{base_id}_{counter}"
+                counter += 1
+
+        td = _task_dir(task_id)
+        img_dir = _images_dir(task_id)
+        os.makedirs(td, exist_ok=True)
+
+        docx_path = os.path.join(td, 'original.docx')
+        if filepath != docx_path:
+            shutil.copy2(filepath, docx_path)
+
+        if not os.path.exists(docx_path):
+            return jsonify({'success': False, 'error': f'文件复制失败，路径不存在: {docx_path}'})
+        if not os.path.getsize(docx_path):
+            return jsonify({'success': False, 'error': 'docs 文件夹中的文件为空'})
+
+        # 保存初始状态，后台处理
+        task_data = {
+            'status': 'processing',
+            'task_id': task_id,
+            'original_filename': safe_name,
+            'content_md5': content_md5,
+            'total_images': 0,
+            'duplicates_removed': 0,
+            'images': [],
+            'output_dir': img_dir,
+            'results': {},
+            'summary': '',
+            'created_at': datetime.now().isoformat(),
+        }
+        task_service.save_task(Config.TASKS_DIR, task_id, task_data)
+
+        thread = threading.Thread(
+            target=_process_in_background,
+            args=(task_id, docx_path, img_dir, safe_name),
+            daemon=True
+        )
+        thread.start()
+
+        logger.info(f"从docs文件已复制，后台处理中 [{task_id}]: {safe_name}")
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'status': 'processing',
+            'message': '文件已就绪，正在后台解析...',
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"从docs解析失败: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)})
+
+
+def _file_md5_path(filepath):
+    """Compute MD5 hash of a file on disk."""
+    h = hashlib.md5()
+    with open(filepath, 'rb') as f:
+        for chunk in iter(lambda: f.read(8192), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+@docx_bp.route('/task/<task_id>/label', methods=['POST'])
+def update_image_label(task_id):
+    """手动更新图片分类标签（支持预定义类别和自定义输入）"""
+    try:
+        data = request.get_json() or {}
+        image_index = data.get('image_index')
+        manual_label = data.get('manual_label', '').strip()
+
+        if image_index is None:
+            return jsonify({'success': False, 'error': '缺少 image_index'})
+
+        task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+        if not task_data:
+            return jsonify({'success': False, 'error': '任务不存在'})
+
+        # 查找并更新指定图片
+        found = False
+        for img in task_data.get('images', []):
+            if img['index'] == image_index:
+                img['manual_label'] = manual_label
+                found = True
+                break
+
+        if not found:
+            return jsonify({'success': False, 'error': f'图片 #{image_index} 不存在'})
+
+        # 保存更新后的任务数据
+        task_service.save_task(Config.TASKS_DIR, task_id, task_data)
+
+        # 重新计算分类统计（手动标签优先）
+        category_stats = {}
+        for img in task_data.get('images', []):
+            cat = img.get('manual_label') or img.get('guessed_category', '其他')
+            category_stats[cat] = category_stats.get(cat, 0) + 1
+
+        logger.info(f"图片标签已更新 [{task_id}] #{image_index} -> '{manual_label}'")
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'image_index': image_index,
+            'manual_label': manual_label,
+            'category_stats': category_stats,
+        })
+
+    except Exception as e:
+        logger.error(f"更新标签失败: {e}")
         return jsonify({'success': False, 'error': str(e)})
