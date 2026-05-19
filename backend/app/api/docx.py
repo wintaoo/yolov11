@@ -56,6 +56,39 @@ def _process_in_background(task_id, docx_path, img_dir, original_filename):
             img['classification_confidence'] = classification.confidence
             img['classification_signals'] = classification.signal_breakdown
 
+        # 先复制到 parsed_images — 只复制有明确分类的图（非"其他"、非"未分类"）
+        parsed_task_dir = _parsed_dir(task_id)
+        if os.path.exists(parsed_task_dir):
+            shutil.rmtree(parsed_task_dir)
+        os.makedirs(parsed_task_dir, exist_ok=True)
+        copied_count = 0
+        for img in extract_result['images']:
+            # 设置默认 parsed_filename（未分类图也用原始文件名，保证前端能找到）
+            img['parsed_filename'] = img.get('filename', '')
+            cat = img.get('guessed_category', '')
+            if not cat or cat in ('其他', '未分类'):
+                continue
+            src = img['filepath']
+            ext = img.get('ext', os.path.splitext(img['filename'])[1].lstrip('.'))
+            figure_name = img.get('figure_name', '')
+            if figure_name and figure_name != '图后无文字':
+                safe_fn = re.sub(r'[\\/:*?"<>|]', '_', figure_name)[:100]
+                base_filename = f"{safe_fn}.{ext}"
+            else:
+                base_filename = img['filename']
+            dst_filename = base_filename
+            collision = 2
+            while os.path.exists(os.path.join(parsed_task_dir, dst_filename)):
+                name_part, dot_ext = os.path.splitext(base_filename)
+                dst_filename = f"{name_part}_{collision}{dot_ext}"
+                collision += 1
+            img['parsed_filename'] = dst_filename
+            dst = os.path.join(parsed_task_dir, dst_filename)
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
+                copied_count += 1
+
+        # 保存任务数据（必须在复制之后，parsed_filename 已设置）
         task_data = {
             'status': 'extracted',
             'task_id': task_id,
@@ -71,33 +104,8 @@ def _process_in_background(task_id, docx_path, img_dir, original_filename):
         }
         task_service.save_task(Config.TASKS_DIR, task_id, task_data)
 
-        # 复制到 parsed_images
-        parsed_task_dir = _parsed_dir(task_id)
-        if os.path.exists(parsed_task_dir):
-            shutil.rmtree(parsed_task_dir)
-        os.makedirs(parsed_task_dir, exist_ok=True)
-        for img in extract_result['images']:
-            src = img['filepath']
-            ext = img.get('ext', os.path.splitext(img['filename'])[1].lstrip('.'))
-            figure_name = img.get('figure_name', '')
-            if figure_name:
-                safe_fn = re.sub(r'[\\/:*?"<>|]', '_', figure_name)[:100]
-                base_filename = f"{safe_fn}.{ext}"
-            else:
-                base_filename = img['filename']
-            dst_filename = base_filename
-            collision = 2
-            while os.path.exists(os.path.join(parsed_task_dir, dst_filename)):
-                name_part, dot_ext = os.path.splitext(base_filename)
-                dst_filename = f"{name_part}_{collision}{dot_ext}"
-                collision += 1
-            img['parsed_filename'] = dst_filename
-            dst = os.path.join(parsed_task_dir, dst_filename)
-            if os.path.exists(src):
-                shutil.copy2(src, dst)
-
         _save_parsed_ref(task_id)
-        logger.info(f"后台处理完成 [{task_id}]: {extract_result['total']} 张图片")
+        logger.info(f"后台处理完成 [{task_id}]: {extract_result['total']} 张图片, 复制 {copied_count} 张到布置图检测")
 
     except Exception as e:
         logger.error(f"后台处理失败 [{task_id}]: {e}", exc_info=True)
@@ -299,13 +307,17 @@ def get_parsed_folder():
             cat = img.get('guessed_category', '其他')
             category_stats[cat] = category_stats.get(cat, 0) + 1
             if img.get('parsed_filename') or img.get('figure_name'):
-                image_figure_map[img.get('parsed_filename', img.get('filename', ''))] = {
+                meta = {
                     'figure_name': img.get('figure_name', ''),
                     'guessed_category': img.get('guessed_category', '其他'),
                     'classification_confidence': img.get('classification_confidence', 0.0),
                     'page_number': img.get('page_number', 1),
                     'index': img.get('index', 0),
                 }
+                # 双键：parsed_filename（新）和 filename（旧）
+                for key in [img.get('parsed_filename'), img.get('filename')]:
+                    if key:
+                        image_figure_map[key] = meta
 
     # Enrich image list with figure_name, page_number, and confidence
     for img_info in images:
@@ -329,19 +341,42 @@ def get_parsed_folder():
 
 @docx_bp.route('/parsed-images/<task_id>', methods=['GET'])
 def list_parsed_images(task_id):
-    """List all images in a parsed folder."""
+    """List all images in a parsed folder (only classified ones are here)."""
     parsed_task_dir = _parsed_dir(task_id)
     if not os.path.exists(parsed_task_dir):
         return jsonify({'success': False, 'error': '解析文件夹不存在'})
+
+    # 加载任务数据获取分类信息，用 parsed_filename 和 filename 双键索引
+    task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+    image_meta = {}
+    if task_data:
+        for img in task_data.get('images', []):
+            meta = {
+                'guessed_category': img.get('manual_label') or img.get('guessed_category', '其他'),
+                'classification_confidence': img.get('classification_confidence', 0.0),
+                'figure_name': img.get('figure_name', ''),
+                'page_number': img.get('page_number', 1),
+                'index': img.get('index', 0),
+            }
+            # 双键：parsed_filename（新）和 filename（旧）
+            for key in [img.get('parsed_filename'), img.get('filename')]:
+                if key:
+                    image_meta[key] = meta
 
     images = []
     for fname in sorted(os.listdir(parsed_task_dir)):
         if not fname.startswith('.') and os.path.isfile(os.path.join(parsed_task_dir, fname)):
             fpath = os.path.join(parsed_task_dir, fname)
+            meta = image_meta.get(fname, {})
             images.append({
                 'filename': fname,
                 'size': os.path.getsize(fpath),
                 'url': f'/api/docx/parsed-image/{task_id}/{fname}',
+                'guessed_category': meta.get('guessed_category', ''),
+                'classification_confidence': meta.get('classification_confidence', 0.0),
+                'figure_name': meta.get('figure_name', ''),
+                'page_number': meta.get('page_number', 1),
+                'index': meta.get('index', 0),
             })
 
     return jsonify({

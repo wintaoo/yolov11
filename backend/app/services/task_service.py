@@ -54,6 +54,7 @@ def save_task(tasks_root, task_id, task_data):
             'figure_name': img.get('figure_name', ''),
             'page_number': img.get('page_number', 1),
             'manual_label': img.get('manual_label', ''),
+            'parsed_filename': img.get('parsed_filename', ''),
         } for img in task_data.get('images', [])],
         'batch_summary': task_data.get('batch_summary', ''),
         'created_at': task_data.get('created_at', datetime.now().isoformat()),

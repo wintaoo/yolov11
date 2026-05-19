@@ -416,18 +416,23 @@ const loadFromParsedFolderById = async (tid: string) => {
           parsedFolder.value = folderRes.data.folder || parsedFolder.value
         }
       } catch {}
-      serverImages.value = res.data.images.map((img: any) => ({
-        ...img,
-        figure_name: img.figure_name || '',
-        guessed_category: img.guessed_category || '其他',
-        classification_confidence: img.classification_confidence || 0,
-        page_number: img.page_number || 1,
-      }))
+      serverImages.value = res.data.images
+        .filter((img: any) => {
+          const cat = img.guessed_category || ''
+          return cat && cat !== '其他' && cat !== '未分类'
+        })
+        .map((img: any) => ({
+          ...img,
+          figure_name: img.figure_name || '',
+          guessed_category: img.guessed_category || '其他',
+          classification_confidence: img.classification_confidence || 0,
+          page_number: img.page_number || 1,
+        }))
       imageFiles.value = []
       clearResults()
       currentImageIndex.value = 0
       selectImage(0)
-      ElMessage.success(`已加载 ${res.data.total} 张布置图`)
+      ElMessage.success(`已加载 ${serverImages.value.length} 张布置图（已过滤无类别）`)
     } else {
       ElMessage.warning('解析文件夹中没有图片')
     }
@@ -502,22 +507,27 @@ const loadFromParsedFolder = async () => {
   try {
     const res = await axios.get(`/api/docx/parsed-images/${parsedInfo.value.task_id}`)
     if (res.data.success && res.data.images.length > 0) {
-      // Switch to server mode
+      // Switch to server mode — 只加载有明确类别的图
       serverMode.value = true
       parsedTaskId.value = res.data.task_id
       parsedFolder.value = parsedInfo.value.folder
-      serverImages.value = res.data.images.map((img: any) => ({
-        ...img,
-        figure_name: img.figure_name || '',
-        guessed_category: img.guessed_category || '其他',
-        classification_confidence: img.classification_confidence || 0,
-        page_number: img.page_number || 1,
-      }))
+      serverImages.value = res.data.images
+        .filter((img: any) => {
+          const cat = img.guessed_category || ''
+          return cat && cat !== '其他' && cat !== '未分类'
+        })
+        .map((img: any) => ({
+          ...img,
+          figure_name: img.figure_name || '',
+          guessed_category: img.guessed_category || '其他',
+          classification_confidence: img.classification_confidence || 0,
+          page_number: img.page_number || 1,
+        }))
       imageFiles.value = []
       clearResults()
       currentImageIndex.value = 0
       selectImage(0)
-      ElMessage.success(`已加载 ${res.data.total} 张布置图`)
+      ElMessage.success(`已加载 ${serverImages.value.length} 张布置图（已过滤无类别）`)
     } else {
       ElMessage.warning('解析文件夹中没有图片')
     }
