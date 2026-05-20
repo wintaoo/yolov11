@@ -342,12 +342,15 @@ def get_parsed_folder():
 
 @docx_bp.route('/parsed-images/<task_id>', methods=['GET'])
 def list_parsed_images(task_id):
-    """List all images in a parsed folder (only classified ones are here)."""
-    parsed_task_dir = _parsed_dir(task_id)
-    if not os.path.exists(parsed_task_dir):
-        return jsonify({'success': False, 'error': '解析文件夹不存在'})
+    """List images for detection.
 
-    # 加载任务数据获取分类信息，用 parsed_filename 和 filename 双键索引
+    Default: only classified images in parsed_images folder.
+    Query ?all=true: return ALL images from the task (including unclassified ones).
+    """
+    all_images = request.args.get('all', '').lower() == 'true'
+    parsed_task_dir = _parsed_dir(task_id)
+
+    # 加载任务数据获取分类信息
     task_data = task_service.load_task(Config.TASKS_DIR, task_id)
     image_meta = {}
     if task_data:
@@ -359,14 +362,19 @@ def list_parsed_images(task_id):
                 'page_number': img.get('page_number', 1),
                 'index': img.get('index', 0),
             }
-            # 双键：parsed_filename（新）和 filename（旧）
             for key in [img.get('parsed_filename'), img.get('filename')]:
                 if key:
                     image_meta[key] = meta
 
     images = []
-    for fname in sorted(os.listdir(parsed_task_dir)):
-        if not fname.startswith('.') and os.path.isfile(os.path.join(parsed_task_dir, fname)):
+    seen_names = set()
+
+    # 始终先加载 parsed_images 中的文件（分类过的图，文件名已被美化）
+    if os.path.exists(parsed_task_dir):
+        for fname in sorted(os.listdir(parsed_task_dir)):
+            if fname.startswith('.') or not os.path.isfile(os.path.join(parsed_task_dir, fname)):
+                continue
+            seen_names.add(fname)
             fpath = os.path.join(parsed_task_dir, fname)
             meta = image_meta.get(fname, {})
             images.append({
@@ -379,6 +387,28 @@ def list_parsed_images(task_id):
                 'page_number': meta.get('page_number', 1),
                 'index': meta.get('index', 0),
             })
+
+    # all=true: 追加 images 目录中未被列入 parsed_images 的原始图片
+    if all_images:
+        img_dir = _images_dir(task_id)
+        if os.path.exists(img_dir):
+            for fname in sorted(os.listdir(img_dir)):
+                if fname.startswith('.') or not os.path.isfile(os.path.join(img_dir, fname)):
+                    continue
+                if fname in seen_names:
+                    continue
+                fpath = os.path.join(img_dir, fname)
+                meta = image_meta.get(fname, {})
+                images.append({
+                    'filename': fname,
+                    'size': os.path.getsize(fpath),
+                    'url': f'/api/docx/image/{task_id}/{fname}',
+                    'guessed_category': meta.get('guessed_category', ''),
+                    'classification_confidence': meta.get('classification_confidence', 0.0),
+                    'figure_name': meta.get('figure_name', ''),
+                    'page_number': meta.get('page_number', 1),
+                    'index': meta.get('index', 0),
+                })
 
     return jsonify({
         'success': True,

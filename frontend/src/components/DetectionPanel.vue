@@ -52,20 +52,6 @@
         </span>
         <el-tag v-if="serverMode" size="small" type="success" effect="plain">解析文件模式</el-tag>
       </div>
-      <div class="toolbar-right">
-        <el-button-group>
-          <el-button size="small" @click="showPreviousImage" :disabled="!hasPreviousImage">
-            <el-icon><ArrowLeft /></el-icon>
-          </el-button>
-          <el-button size="small" @click="showNextImage" :disabled="!hasNextImage">
-            <el-icon><ArrowRight /></el-icon>
-          </el-button>
-        </el-button-group>
-        <el-button size="small" type="danger" plain @click="clearResults" :disabled="!detectionResult">
-          <el-icon><Delete /></el-icon>
-          清除
-        </el-button>
-      </div>
     </div>
 
     <div class="workspace" v-if="imageFiles.length || serverImages.length">
@@ -486,7 +472,8 @@ const fetchParsedFolder = async () => {
 const loadImagesFromParsed = async (filtered: boolean) => {
   if (!parsedInfo.value) return
   try {
-    const res = await axios.get(`/api/docx/parsed-images/${parsedInfo.value.task_id}`)
+    const params = filtered ? {} : { all: 'true' }
+    const res = await axios.get(`/api/docx/parsed-images/${parsedInfo.value.task_id}`, { params })
     if (res.data.success && res.data.images.length > 0) {
       serverMode.value = true
       parsedTaskId.value = res.data.task_id
@@ -528,7 +515,8 @@ const loadFilteredFromParsedFolder = () => loadImagesFromParsed(true)
 
 const loadFromParsedFolderById = async (tid: string, filtered: boolean = true) => {
   try {
-    const res = await axios.get(`/api/docx/parsed-images/${tid}`)
+    const params = filtered ? {} : { all: 'true' }
+    const res = await axios.get(`/api/docx/parsed-images/${tid}`, { params })
     if (res.data.success && res.data.images.length > 0) {
       serverMode.value = true
       parsedTaskId.value = res.data.task_id
