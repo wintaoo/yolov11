@@ -226,7 +226,7 @@ def list_tasks(tasks_root):
 def delete_task(tasks_root, task_id):
     d = task_dir(tasks_root, task_id)
     if os.path.exists(d):
-        shutil.rmtree(d)
+        shutil.rmtree(d, ignore_errors=True)
         logger.info(f"任务已删除: {task_id}")
         return True
     return False

@@ -536,12 +536,14 @@ def load_task(task_id):
 @docx_bp.route('/task/<task_id>', methods=['DELETE'])
 def delete_task(task_id):
     try:
-        task_service.delete_task(Config.TASKS_DIR, task_id)
-        # Also clean up parsed folder
+        deleted = task_service.delete_task(Config.TASKS_DIR, task_id)
+        if not deleted:
+            return jsonify({'success': False, 'error': f'任务不存在: {task_id}'})
+
         parsed_task_dir = _parsed_dir(task_id)
         if os.path.exists(parsed_task_dir):
-            shutil.rmtree(parsed_task_dir)
-        # Clear ref if it points to this task
+            shutil.rmtree(parsed_task_dir, ignore_errors=True)
+
         ref_path = os.path.join(_parsed_dir(), '.last_parsed')
         if os.path.exists(ref_path):
             with open(ref_path, 'r') as f:

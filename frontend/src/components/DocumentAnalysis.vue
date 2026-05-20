@@ -82,8 +82,30 @@
           <el-tag v-if="duplicatesRemoved > 0" size="small" type="success" effect="plain">
             去重 {{ duplicatesRemoved }} 张
           </el-tag>
+          <span v-if="categoryFilter" class="filter-badge">
+            筛选: {{ categoryFilter }}（{{ filteredImages.length }} 张）
+          </span>
         </div>
         <div class="status-actions">
+          <el-select
+            v-model="categoryFilter"
+            placeholder="按类别筛选"
+            clearable
+            size="small"
+            style="width: 180px;"
+            @change="onCategoryFilterChange"
+          >
+            <el-option
+              v-for="cat in availableCategories"
+              :key="cat"
+              :label="`${cat} (${getCategoryCount(cat)})`"
+              :value="cat"
+            />
+          </el-select>
+          <el-button v-if="categoryFilter" size="small" type="primary" plain @click="categoryFilter = ''">
+            <el-icon><List /></el-icon>
+            显示全部
+          </el-button>
           <el-button size="small" type="danger" plain @click="resetTask">返回列表</el-button>
         </div>
       </div>
@@ -91,7 +113,7 @@
       <div class="content-layout">
         <div class="image-grid">
           <div
-            v-for="img in images"
+            v-for="img in filteredImages"
             :key="img.index"
             class="image-card"
             :class="{ selected: selectedImg === img.index, 'has-manual-label': !!img.manual_label }"
@@ -262,9 +284,18 @@
       </div>
 
       <div class="category-summary" v-if="Object.keys(categoryStats).length">
-        <h4>图片分类统计（多信号融合匹配）</h4>
+        <h4>
+          图片分类统计（点击筛选）
+          <el-button v-if="categoryFilter" size="small" text type="primary" @click="categoryFilter = ''">清除筛选</el-button>
+        </h4>
         <div class="cat-chips">
-          <span v-for="(count, cat) in sortedCategoryStats" :key="cat" class="cat-chip">
+          <span
+            v-for="(count, cat) in sortedCategoryStats"
+            :key="cat"
+            class="cat-chip"
+            :class="{ active: categoryFilter === cat }"
+            @click="categoryFilter = categoryFilter === cat ? '' : cat"
+          >
             {{ cat }} <strong>{{ count }}</strong>
           </span>
         </div>
@@ -329,7 +360,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Upload, Picture, Clock, FolderOpened, Delete, Document, Edit, Check, CircleCheck, Loading, Folder, DataAnalysis, CopyDocument, Close, WarningFilled, VideoPlay, Printer } from '@element-plus/icons-vue'
+import { Upload, Picture, Clock, FolderOpened, Delete, Document, Edit, Check, CircleCheck, Loading, Folder, DataAnalysis, CopyDocument, Close, WarningFilled, VideoPlay, Printer, List } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import { marked } from 'marked'
@@ -358,6 +389,27 @@ const taskList = ref<any[]>([])
 const uploading = ref(false)
 const uploadPercent = ref(0)
 const uploadStatus = ref('')
+
+// Category filter
+const categoryFilter = ref('')
+const filteredImages = computed(() => {
+  if (!categoryFilter.value) return images.value
+  return images.value.filter(img => getEffectiveCategory(img) === categoryFilter.value)
+})
+const availableCategories = computed(() => {
+  const cats = new Set<string>()
+  images.value.forEach(img => {
+    const cat = getEffectiveCategory(img)
+    if (cat && cat !== '其他') cats.add(cat)
+  })
+  return Array.from(cats).sort()
+})
+const getCategoryCount = (cat: string) => {
+  return images.value.filter(img => getEffectiveCategory(img) === cat).length
+}
+const onCategoryFilterChange = () => {
+  // filter change handled by v-model + computed
+}
 
 // Docs folder dialog
 const showDocsDialog = ref(false)
@@ -857,11 +909,19 @@ const removeTask = async (tid: string) => {
     await ElMessageBox.confirm('确定要删除此解析记录吗？', '确认删除', {
       confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
     })
-    await axios.delete(`/api/docx/task/${tid}`)
-    taskList.value = taskList.value.filter(t => t.task_id !== tid)
-    ElMessage.success('记录已删除')
   } catch {
-    // user cancelled or error
+    return
+  }
+  try {
+    const res = await axios.delete(`/api/docx/task/${tid}`)
+    if (res.data && res.data.success) {
+      taskList.value = taskList.value.filter(t => t.task_id !== tid)
+      ElMessage.success('记录已删除')
+    } else {
+      ElMessage.error(res.data?.error || '删除失败')
+    }
+  } catch (err: any) {
+    ElMessage.error(err.message || '删除失败')
   }
 }
 
@@ -936,7 +996,11 @@ onMounted(() => {
   background: white; border-radius: 10px; padding: 12px 20px;
   box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
-.status-info { display: flex; gap: 16px; align-items: center; }
+.status-info { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.filter-badge {
+  font-size: 12px; color: #6366f1; background: #eef2ff;
+  padding: 2px 10px; border-radius: 12px; font-weight: 600;
+}
 .task-id { font-weight: 700; color: #6366f1; font-family: monospace; }
 .image-count { color: #64748b; font-size: 14px; }
 .status-actions { display: flex; gap: 8px; }
@@ -1006,9 +1070,15 @@ onMounted(() => {
 .label-hint strong { color: #6366f1; }
 
 .category-summary { background: white; border-radius: 12px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
-.category-summary h4 { font-size: 13px; margin-bottom: 10px; color: #475569; }
+.category-summary h4 { font-size: 13px; margin-bottom: 10px; color: #475569; display: flex; align-items: center; gap: 8px; }
 .cat-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.cat-chip { padding: 4px 12px; border-radius: 14px; font-size: 13px; background: #f1f5f9; color: #475569; }
+.cat-chip {
+  padding: 4px 12px; border-radius: 14px; font-size: 13px; background: #f1f5f9;
+  color: #475569; cursor: pointer; transition: all .15s; user-select: none;
+}
+.cat-chip:hover { background: #e0e7ff; color: #4338ca; }
+.cat-chip.active { background: #6366f1; color: #fff; }
+.cat-chip.active strong { color: #fff; }
 .cat-chip strong { color: #1e293b; margin-left: 2px; }
 .confidence-summary { margin-top: 10px; font-size: 13px; color: #64748b; }
 

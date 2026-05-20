@@ -5,10 +5,16 @@
         <el-icon :size="18"><FolderOpened /></el-icon>
         <span>检测到已解析的投标文件：<strong>{{ parsedInfo.doc_name || parsedInfo.task_id }}</strong>，共 <strong>{{ parsedInfo.image_count }}</strong> 张图片</span>
       </div>
-      <el-button size="small" type="primary" @click="loadFilteredFromParsedFolder">
-        <el-icon><FolderOpened /></el-icon>
-        加载布置图
-      </el-button>
+      <div class="parsed-banner-actions">
+        <el-button size="small" type="primary" plain @click="loadAllFromParsedFolder">
+          <el-icon><FolderOpened /></el-icon>
+          加载所有图片
+        </el-button>
+        <el-button size="small" type="success" plain @click="loadFilteredFromParsedFolder">
+          <el-icon><FolderOpened /></el-icon>
+          只加载有类别图片
+        </el-button>
+      </div>
     </div>
 
     <div class="toolbar">
@@ -18,35 +24,6 @@
           <span>打开本地文件夹</span>
           <input type="file" ref="folderInput" @change="handleFolderSelect" webkitdirectory directory hidden />
         </label>
-        <el-button
-          v-if="parsedInfo && !serverMode"
-          size="small"
-          type="primary"
-          plain
-          @click="loadAllFromParsedFolder"
-        >
-          <el-icon><FolderOpened /></el-icon>
-          加载所有图片
-        </el-button>
-        <el-button
-          v-if="parsedInfo && !serverMode"
-          size="small"
-          type="success"
-          plain
-          @click="loadFilteredFromParsedFolder"
-        >
-          <el-icon><FolderOpened /></el-icon>
-          只加载有类别图片
-        </el-button>
-        <el-button
-          size="small"
-          type="warning"
-          plain
-          @click="openDocsDialog"
-        >
-          <el-icon><FolderOpened /></el-icon>
-          从 docs 文件夹选择
-        </el-button>
         <span class="file-count" v-if="imageFiles.length || serverImages.length">
           {{ currentImageIndex + 1 }} / {{ totalImageCount }}
         </span>
@@ -715,6 +692,7 @@ onUnmounted(() => {
 }
 .parsed-banner-left { display: flex; align-items: center; gap: 8px; }
 .parsed-banner-left strong { color: #15803d; }
+.parsed-banner-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 .toolbar {
   display: flex; align-items: center; justify-content: space-between;
