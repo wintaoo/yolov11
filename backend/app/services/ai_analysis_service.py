@@ -9,31 +9,48 @@ from backend.app.config import Config
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """你是一个专业的建筑工程图纸分析助手。你的任务是分析施工图纸图片，识别图纸类型并提取结构化信息。
+SYSTEM_PROMPT = """你是一个专业的建筑工程图纸分析专家。你的任务是对施工图纸进行深度分析，识别图纸类型并提取所有可识别的结构化信息。
 
-请严格按照以下JSON格式返回分析结果，不要添加任何额外说明：
+请严格按照以下JSON格式返回分析结果，不要添加任何额外说明。每个字段都要尽可能详细、准确：
 
 {
-  "image_type": "图纸类型，从以下选项中选择：周边环境图、进度计划图、分区规划图、基础结构图、临时用电布置图、临时用水布置图、土方工程图、主体结构图、装饰装修图、总平面布置图、施工计划图、临建设施平面布置图、施工分区图、其他",
-  "summary": "对该图片内容的摘要，涵盖图中展示的核心信息、空间布局、标注内容、关键数据等，要求200-400字，尽可能详细",
-  "evaluation": "对该图纸的客观评价，从以下维度逐项分析（每项一句话）：1)图纸完整性：图中要素是否齐全，有无缺漏；2)标注清晰度：文字标注、尺寸标注、图例是否清晰可辨；3)布局合理性：空间布局和设施布置是否合理；4)与规范符合性：是否符合施工图绘制规范。最后给出总体评价等级（优/良/中/差）",
+  "image_type": "图纸类型，从以下选项中选择最匹配的一个：周边环境图、进度计划图、分区规划图、基础结构图、临时用电布置图、临时用水布置图、土方工程图、主体结构图、装饰装修图、总平面布置图、施工计划图、临建设施平面布置图、施工分区图。如无法确定则填'其他'",
+  "summary": "对该图片内容的详细摘要（400-600字），必须涵盖以下方面：(1)图纸整体描述：图纸的用途、所属工程阶段、表达的核心内容；(2)空间布局分析：各区域、建筑物、构筑物的位置关系和空间组织逻辑；(3)标注与说明：图中出现的所有文字标注、尺寸标注、图例说明、附注等关键信息；(4)关键数据：任何可辨识的数字、比例尺、面积、标高、坐标等定量信息；(5)图面特征：图框、标题栏、指北针、比例尺等制图要素的存在情况。请用连贯的段落叙述，不要使用无序列表",
+  "evaluation": "从以下五个维度逐项详细评价（每项2-3句话，最后给出总评）：(1)图纸完整性：图中要素是否齐全，有无明显缺漏或不完整之处；(2)标注清晰度：文字标注、尺寸标注、图例是否清晰可辨，是否有模糊或重叠；(3)布局合理性：空间布局、设施布置的合理性和逻辑性；(4)制图规范性：是否符合施工图绘制标准（线型、图层、字体等）；(5)实用性与可施工性：图纸对实际施工的指导价值如何，是否有需要补充或修正的地方。最后给出总体评价等级：优（各方面优秀）/良（整体良好，个别不足）/中（存在明显问题）/差（严重缺陷）",
   "has_drawing": true/false,
-  "drawing_name": "图名称（如有）",
+  "drawing_name": "图名称（从图中标题栏或图名标注中提取，如无则填空字符串）",
   "elements": {
-    "recognized_items": ["识别到的要素列表"],
-    "facilities": {}
+    "recognized_items": ["列出图中所有可识别的重要元素，包括但不限于：建筑物轮廓、道路、围墙、大门、临时设施（办公区、生活区、加工棚、仓库等）、机械设备（塔吊、施工电梯、混凝土泵车等）、材料堆场、管线、绿化、水系、测量控制点等。每个要素用简短的名称描述"],
+    "facilities": {"设施名称": "数量（如可辨识）"}
   },
   "construction_schedule": {
     "has_schedule": true/false,
-    "start_date": "开始日期（如有，格式YYYY-MM-DD）",
-    "end_date": "结束日期（如有，格式YYYY-MM-DD）",
+    "start_date": "开工日期（如有，格式YYYY-MM-DD）",
+    "end_date": "竣工日期（如有，格式YYYY-MM-DD）",
+    "total_duration": "总工期（如有，如'180天'）",
+    "key_milestones": ["关键节点（如有）"],
     "tasks": [
       {"name": "施工内容", "start": "开始时间", "end": "结束时间", "duration": "工期"}
     ]
   },
   "dimensions_specs": {
     "found": true/false,
-    "items": [{"name": "构件/设施名称", "dimension": "尺寸", "model": "型号", "quantity": "数量"}]
+    "items": [
+      {
+        "name": "构件/设施/区域名称",
+        "dimension": "尺寸（长×宽×高或面积等）",
+        "spec": "规格/材质/强度等级等",
+        "quantity": "数量",
+        "location": "位置描述"
+      }
+    ]
+  },
+  "safety_environment": {
+    "has_info": true/false,
+    "fire_fighting": "消防设施布置情况（灭火器、消火栓、消防通道等）",
+    "safety_signs": "安全标识情况",
+    "environmental": "环保措施（降尘、排污、噪音控制等）",
+    "emergency": "应急预案相关设施（如疏散路线、集合点等）"
   }
 }"""
 
@@ -299,7 +316,7 @@ def analyze_image_with_ai(image_path, context_text=""):
                         ]
                     }
                 ],
-                "max_tokens": 4096,
+                "max_tokens": 8192,
                 "temperature": 0.1,
             }
 
@@ -427,26 +444,28 @@ def _json_to_markdown(result: dict, figure_name: str = "", context_before: str =
     lines = []
 
     # 标题
-    title = f"# AI 图纸分析报告"
+    title = f"# 图纸深度分析报告"
     if figure_name and figure_name != '图后无文字':
         title += f" — {figure_name}"
     lines.append(title)
     lines.append("")
 
-    # 1. 图纸基本信息
+    # 1. 基本信息
     image_type = result.get('image_type', '未识别')
     drawing_name = result.get('drawing_name', '')
-    has_drawing = result.get('has_drawing', False)
     lines.append("## 1. 图纸基本信息")
-    lines.append(f"- **图纸类型**: {image_type}")
+    lines.append(f"| 项目 | 内容 |")
+    lines.append(f"|------|------|")
+    lines.append(f"| 图纸类型 | **{image_type}** |")
     if drawing_name:
-        lines.append(f"- **图纸名称**: {drawing_name}")
-    lines.append(f"- **含图纸**: {'是' if has_drawing else '否'}")
+        lines.append(f"| 图纸名称 | {drawing_name} |")
+    if figure_name and figure_name != '图后无文字':
+        lines.append(f"| 文档标注 | {figure_name} |")
     lines.append("")
 
-    # 2. 图纸内容概述
+    # 2. 内容深度概述
     summary = _safe_str(result.get('summary', '未提供'))
-    lines.append("## 2. 图纸内容概述")
+    lines.append("## 2. 图纸内容深度概述")
     lines.append(summary)
     lines.append("")
 
@@ -454,71 +473,106 @@ def _json_to_markdown(result: dict, figure_name: str = "", context_before: str =
     elements = result.get('elements', {}) or {}
     recognized_items = elements.get('recognized_items', []) or []
     facilities = elements.get('facilities', {}) or {}
-    lines.append("## 3. 关键要素清单")
+    lines.append("## 3. 关键要素识别")
     if recognized_items:
-        lines.append("### 识别要素")
+        lines.append(f"共识别 **{len(recognized_items)}** 项要素：")
+        lines.append("")
         for item in recognized_items:
             lines.append(f"- {item}")
         lines.append("")
     if facilities:
-        lines.append("### 设施统计")
+        lines.append("### 设施/设备统计")
+        lines.append("")
+        lines.append("| 设施名称 | 数量 |")
+        lines.append("|----------|------|")
         for name, count in facilities.items():
-            lines.append(f"- **{name}**: {count}")
+            lines.append(f"| {name} | {count} |")
         lines.append("")
     if not recognized_items and not facilities:
-        lines.append("（图中未识别到明确的要素或设施信息）")
+        lines.append("> 图中未识别到明确的离散要素，可能为示意性图纸或纯文字图表。")
         lines.append("")
 
-    # 4. 施工要点分析
+    # 4. 施工计划分析
     schedule = result.get('construction_schedule', {}) or {}
-    dims = result.get('dimensions_specs', {}) or {}
-    lines.append("## 4. 施工要点分析")
-    has_content = False
+    lines.append("## 4. 施工计划与工期分析")
     if schedule.get('has_schedule'):
-        has_content = True
-        lines.append("### 施工计划")
-        lines.append(f"- **开始日期**: {schedule.get('start_date', '未知')}")
-        lines.append(f"- **结束日期**: {schedule.get('end_date', '未知')}")
+        lines.append(f"- **开工日期**: {schedule.get('start_date', '未知')}")
+        lines.append(f"- **竣工日期**: {schedule.get('end_date', '未知')}")
+        if schedule.get('total_duration'):
+            lines.append(f"- **总工期**: {schedule.get('total_duration', '')}")
+        milestones = schedule.get('key_milestones', []) or []
+        if milestones:
+            lines.append("")
+            lines.append("### 关键里程碑")
+            for m in milestones:
+                lines.append(f"- {m}")
+            lines.append("")
         tasks = schedule.get('tasks', []) or []
-        for task in tasks:
-            lines.append(f"  - {task.get('name', '')}: {task.get('start', '')} ~ {task.get('end', '')} ({task.get('duration', '')})")
-        lines.append("")
-    if dims.get('found'):
-        has_content = True
-        lines.append("### 尺寸规格")
-        for item in dims.get('items', []) or []:
-            parts = [item.get('name', '')]
-            if item.get('dimension'):
-                parts.append(f"尺寸: {item['dimension']}")
-            if item.get('model'):
-                parts.append(f"型号: {item['model']}")
-            if item.get('quantity'):
-                parts.append(f"数量: {item['quantity']}")
-            lines.append(f"- {' | '.join(parts)}")
-        lines.append("")
-    if not has_content:
-        lines.append("（图中未识别到明确的施工计划或尺寸规格信息）")
+        if tasks:
+            lines.append("")
+            lines.append("### 施工任务分解")
+            lines.append("")
+            lines.append("| 施工内容 | 开始时间 | 结束时间 | 工期 |")
+            lines.append("|----------|----------|----------|------|")
+            for task in tasks:
+                lines.append(f"| {task.get('name', '')} | {task.get('start', '')} | {task.get('end', '')} | {task.get('duration', '')} |")
+            lines.append("")
+    else:
+        lines.append("> 图中未包含施工计划或工期相关信息。")
         lines.append("")
 
-    # 5. 规范性评估
-    evaluation = _safe_str(result.get('evaluation', '未提供评估信息'))
-    lines.append("## 5. 规范性评估")
+    # 5. 尺寸规格与技术参数
+    dims = result.get('dimensions_specs', {}) or {}
+    lines.append("## 5. 尺寸规格与技术参数")
+    if dims.get('found') and dims.get('items'):
+        items = dims.get('items', [])
+        lines.append(f"共识别 **{len(items)}** 项规格数据：")
+        lines.append("")
+        lines.append("| 名称 | 尺寸 | 规格/材质 | 数量 | 位置 |")
+        lines.append("|------|------|-----------|------|------|")
+        for item in items:
+            lines.append(f"| {item.get('name', '')} | {item.get('dimension', '-')} | {item.get('spec', '-')} | {item.get('quantity', '-')} | {item.get('location', '-')} |")
+        lines.append("")
+    else:
+        lines.append("> 图中未提取到明确的尺寸规格或技术参数。")
+        lines.append("")
+
+    # 6. 安全与环保
+    safety = result.get('safety_environment', {}) or {}
+    if safety.get('has_info'):
+        lines.append("## 6. 安全与环保措施")
+        if safety.get('fire_fighting'):
+            lines.append(f"### 消防设施\n{safety['fire_fighting']}")
+            lines.append("")
+        if safety.get('safety_signs'):
+            lines.append(f"### 安全标识\n{safety['safety_signs']}")
+            lines.append("")
+        if safety.get('environmental'):
+            lines.append(f"### 环保措施\n{safety['environmental']}")
+            lines.append("")
+        if safety.get('emergency'):
+            lines.append(f"### 应急设施\n{safety['emergency']}")
+            lines.append("")
+
+    # 7. 规范性评估
+    evaluation = _safe_str(result.get('evaluation', '未提供'))
+    lines.append("## 7. 综合评估")
     lines.append(evaluation)
     lines.append("")
 
-    # 6. 文档上下文参考
+    # 8. 文档上下文
     if context_before or context_after:
-        lines.append("## 6. 文档上下文参考")
+        lines.append("## 8. 文档上下文参考")
         if context_before:
-            lines.append(f"**上文**: {context_before[:200]}")
+            lines.append(f"> **上文**: {context_before[:300]}")
         if context_after:
-            lines.append(f"**下文**: {context_after[:200]}")
+            lines.append(f"> **下文**: {context_after[:300]}")
         lines.append("")
 
     # 页脚
     from datetime import datetime
     lines.append("---")
-    lines.append(f"> 分析时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  \n> 分析模型: 多模态视觉大模型（SiliconFlow）")
+    lines.append(f"*分析时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 分析引擎: 多模态视觉大模型（SiliconFlow）*")
 
     return "\n".join(lines)
 

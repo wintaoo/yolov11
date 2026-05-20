@@ -205,8 +205,8 @@
           </div>
         </div>
 
-        <!-- AI 分析面板 -->
-        <aside class="analysis-panel" v-if="selectedImage && showAnalysisPanel">
+        <!-- AI 分析面板（固定区域，始终显示） -->
+        <aside class="analysis-panel" v-if="selectedImage">
           <div class="analysis-header">
             <h3>
               <el-icon :size="16"><DataAnalysis /></el-icon>
@@ -216,17 +216,16 @@
               <el-button v-if="analysisState === 'loaded'" size="small" text title="复制报告" @click="copyReport">
                 <el-icon :size="16"><CopyDocument /></el-icon>
               </el-button>
+              <el-button v-if="analysisState === 'loaded'" size="small" text title="导出PDF" @click="exportPdf">
+                <el-icon :size="16"><Printer /></el-icon>
+              </el-button>
               <el-button v-if="analysisState === 'loaded'" size="small" text title="导出MD" @click="exportReport">
                 <el-icon :size="16"><Download /></el-icon>
-              </el-button>
-              <el-button size="small" text title="关闭面板" @click="toggleAnalysisPanel">
-                <el-icon :size="16"><Close /></el-icon>
               </el-button>
             </div>
           </div>
 
           <div class="analysis-body">
-            <!-- 待分析 -->
             <div v-if="analysisState === 'idle'" class="analysis-idle">
               <el-icon :size="40" color="#6366f1"><DataAnalysis /></el-icon>
               <p>点击下方按钮，AI 将自动识别图纸类型、关键要素并生成详细报告</p>
@@ -237,39 +236,24 @@
               </el-button>
             </div>
 
-            <!-- 分析中 -->
             <div v-if="analysisState === 'loading'" class="analysis-loading">
               <div class="analysis-spinner"></div>
               <p>{{ analysisLoadingMsg }}</p>
               <p class="analysis-hint">首次分析约需 30-60 秒，请耐心等待</p>
             </div>
 
-            <!-- 失败 -->
             <div v-if="analysisError" class="analysis-error">
               <el-icon :size="24" color="#dc2626"><WarningFilled /></el-icon>
               <p>{{ analysisError }}</p>
               <el-button size="small" type="primary" @click="startAnalysis">重试</el-button>
             </div>
 
-            <!-- 报告 -->
             <div v-if="analysisState === 'loaded' && analysisReport" class="analysis-content">
               <div class="markdown-body" v-html="renderedReport"></div>
             </div>
           </div>
         </aside>
       </div>
-
-      <!-- 浮动AI分析按钮 -->
-      <el-button
-        v-if="selectedImage && !showAnalysisPanel"
-        class="analysis-float-btn"
-        size="small"
-        type="primary"
-        @click="toggleAnalysisPanel"
-      >
-        <el-icon><DataAnalysis /></el-icon>
-        AI分析
-      </el-button>
 
       <div class="category-summary" v-if="Object.keys(categoryStats).length">
         <h4>图片分类统计（多信号融合匹配）</h4>
@@ -332,7 +316,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Upload, Picture, Clock, FolderOpened, Delete, Document, Edit, Check, CircleCheck, Loading, Folder, DataAnalysis, CopyDocument, Close, WarningFilled, VideoPlay } from '@element-plus/icons-vue'
+import { Upload, Picture, Clock, FolderOpened, Delete, Document, Edit, Check, CircleCheck, Loading, Folder, DataAnalysis, CopyDocument, Close, WarningFilled, VideoPlay, Printer } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import { marked } from 'marked'
@@ -370,7 +354,6 @@ const selectedDocsFile = ref('')
 const docsFolder = ref('')
 
 // AI Analysis Panel
-const showAnalysisPanel = ref(false)
 const analysisState = ref<'idle' | 'loading' | 'loaded'>('idle')
 const analysisReport = ref('')
 const analysisError = ref('')
@@ -702,11 +685,10 @@ const checkExistingReport = async (tid: string, imgIdx: number) => {
     if (res.data.success && res.data.found && res.data.report) {
       analysisReport.value = res.data.report
       analysisState.value = 'loaded'
-      showAnalysisPanel.value = true
+      // 有报告但不自动弹开面板，保持布局稳定
     } else {
       analysisState.value = 'idle'
       analysisReport.value = ''
-      showAnalysisPanel.value = false
     }
   } catch {
     analysisState.value = 'idle'
@@ -721,7 +703,6 @@ const startAnalysis = async () => {
   analysisState.value = 'loading'
   analysisError.value = ''
   analysisReport.value = ''
-  showAnalysisPanel.value = true
   analysisLoadingMsg.value = 'AI 正在分析图纸，预计 30-60 秒...'
   try {
     const res = await axios.post(
@@ -765,13 +746,36 @@ const exportReport = () => {
   URL.revokeObjectURL(url)
 }
 
-const toggleAnalysisPanel = () => {
-  showAnalysisPanel.value = !showAnalysisPanel.value
+const exportPdf = () => {
+  if (!analysisReport.value) return
+  const htmlContent = marked.parse(analysisReport.value) as string
+  const w = window.open('', '_blank', 'width=900,height=700')
+  if (!w) { ElMessage.error('请允许弹出窗口以导出PDF'); return }
+  w.document.write(`
+    <!DOCTYPE html><html><head><meta charset="utf-8"><title>图纸分析报告</title>
+    <style>
+      *{box-sizing:border-box}body{font-family:'Microsoft YaHei','PingFang SC',sans-serif;max-width:800px;margin:0 auto;padding:30px;color:#1e293b;line-height:1.8}
+      h1{font-size:22px;border-bottom:2px solid #eef2ff;padding-bottom:10px;margin-bottom:20px}
+      h2{font-size:16px;color:#4f46e5;margin-top:24px;border-bottom:1px solid #f1f5f9;padding-bottom:4px}
+      h3{font-size:14px;color:#475569;margin-top:16px}
+      table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+      th{background:#f1f5f9;padding:6px 10px;text-align:left;font-weight:600;border:1px solid #e2e8f0}
+      td{padding:5px 10px;border:1px solid #e2e8f0}
+      blockquote{border-left:3px solid #818cf8;padding:4px 12px;color:#64748b;margin:10px 0;background:#f8fafc}
+      ul,ol{padding-left:20px}li{margin-bottom:4px}
+      strong{color:#1e293b;font-weight:600}
+      hr{border:none;border-top:1px solid #e2e8f0;margin:16px 0}
+      @media print{body{padding:20px}@page{margin:15mm}}
+    </style></head><body>
+    ${htmlContent}
+    <script>window.onload=function(){window.print();setTimeout(function(){window.close()},500)}<\/script>
+    </body></html>
+  `)
+  w.document.close()
 }
 
 const resetAnalysis = () => {
   if (analysisAbortController) { analysisAbortController.abort(); analysisAbortController = null }
-  showAnalysisPanel.value = false
   analysisState.value = 'idle'
   analysisReport.value = ''
   analysisError.value = ''
@@ -915,7 +919,7 @@ onMounted(() => {
 .image-count { color: #64748b; font-size: 14px; }
 .status-actions { display: flex; gap: 8px; }
 
-.content-layout { display: flex; gap: 16px; align-items: flex-start; }
+.content-layout { display: flex; gap: 16px; align-items: flex-start; overflow-x: auto; padding-bottom: 8px; }
 
 .image-grid {
   flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -951,6 +955,7 @@ onMounted(() => {
 .detail-panel {
   width: 400px; flex-shrink: 0; background: white; border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow-y: auto;
+  max-height: calc(100vh - 260px);
 }
 .empty-detail { display: flex; align-items: center; justify-content: center; }
 .empty-hint { display: flex; flex-direction: column; align-items: center; gap: 12px; color: #94a3b8; font-size: 14px; padding: 40px 20px; text-align: center; }
@@ -1048,17 +1053,17 @@ onMounted(() => {
 .analysis-content { padding: 4px 0; }
 .markdown-body { font-size: 14px; line-height: 1.75; color: #334155; }
 .markdown-body h1 { font-size: 18px; font-weight: 700; color: #1e293b; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #eef2ff; }
-.markdown-body h2 { font-size: 15px; font-weight: 700; color: #4f46e5; margin: 20px 0 8px; }
+.markdown-body h2 { font-size: 15px; font-weight: 700; color: #4f46e5; margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #f1f5f9; }
 .markdown-body h3 { font-size: 14px; font-weight: 600; color: #475569; margin: 14px 0 6px; }
 .markdown-body p { margin: 0 0 8px; }
 .markdown-body ul, .markdown-body ol { padding-left: 20px; margin: 0 0 8px; }
 .markdown-body li { margin-bottom: 4px; }
 .markdown-body strong { color: #1e293b; font-weight: 600; }
-.markdown-body blockquote { border-left: 3px solid #818cf8; padding: 4px 12px; color: #64748b; margin: 12px 0; }
+.markdown-body blockquote { border-left: 3px solid #818cf8; padding: 4px 12px; color: #64748b; margin: 12px 0; background: #f8fafc; }
 .markdown-body hr { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
+.markdown-body table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 13px; }
+.markdown-body th { background: #f1f5f9; padding: 6px 10px; text-align: left; font-weight: 600; color: #475569; border: 1px solid #e2e8f0; }
+.markdown-body td { padding: 5px 10px; border: 1px solid #e2e8f0; color: #334155; }
+.markdown-body em { color: #94a3b8; }
 
-.analysis-float-btn {
-  position: fixed; right: 28px; bottom: 28px; z-index: 50;
-  box-shadow: 0 4px 14px rgba(99,102,241,.35);
-}
 </style>
