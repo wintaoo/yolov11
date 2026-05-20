@@ -83,7 +83,7 @@ body {
 }
 
 .header-inner {
-  max-width: 1440px;
+  max-width: 96%;
   margin: 0 auto;
   padding: 0 24px;
   height: 56px;
@@ -163,7 +163,7 @@ body {
 .app-main {
   flex: 1;
   padding: 20px 24px 32px;
-  max-width: 1440px;
+  max-width: 96%;
   margin: 0 auto;
   width: 100%;
 }

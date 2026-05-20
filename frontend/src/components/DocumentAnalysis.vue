@@ -922,9 +922,9 @@ onMounted(() => {
 .content-layout { display: flex; gap: 16px; align-items: flex-start; overflow-x: auto; padding-bottom: 8px; }
 
 .image-grid {
-  flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px; min-width: 0; max-height: calc(100vh - 260px); overflow-y: auto;
-  background: white; border-radius: 12px; padding: 14px;
+  flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px; min-width: 0; max-height: calc(100vh - 260px); overflow-y: auto;
+  background: white; border-radius: 12px; padding: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,.06);
 }
 .image-card {
@@ -953,7 +953,7 @@ onMounted(() => {
 }
 
 .detail-panel {
-  width: 400px; flex-shrink: 0; background: white; border-radius: 12px;
+  width: 360px; flex-shrink: 0; background: white; border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow-y: auto;
   max-height: calc(100vh - 260px);
 }
