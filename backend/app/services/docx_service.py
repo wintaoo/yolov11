@@ -326,8 +326,8 @@ def extract_images_from_docx(file_path, output_dir):
             header = f.read(4)
         if header[:2] == b'\xd0\xcf':
             raise ValueError(
-                f"该文件是旧版 .doc 格式（二进制），无法直接解析。"
-                f"请用 Word 另存为 .docx 格式后重新上传。"
+                f"当前系统仅支持 .docx 格式，无法解析旧版 .doc 文件。"
+                f"请用 WPS 或 Word 打开该文件，点击「文件 → 另存为」选择 .docx 格式后重新上传。"
             )
         raise ValueError(f"无法打开文档: {e}")
 

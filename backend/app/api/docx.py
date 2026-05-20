@@ -137,7 +137,7 @@ def upload_docx():
 
         file = request.files['file']
         if not file.filename.lower().endswith(('.docx', '.doc')):
-            return jsonify({'success': False, 'error': '仅支持 .doc / .docx 格式的Word文档'})
+            return jsonify({'success': False, 'error': '当前系统仅支持 .docx 格式。请用 WPS 或 Word 将文件另存为 .docx 后重新上传。'})
 
         safe_name = re.sub(r'[\\/:*?"<>|]', '_', file.filename.rsplit('.', 1)[0])[:50]
 
@@ -593,7 +593,7 @@ def upload_from_docs():
         if not os.path.exists(filepath):
             return jsonify({'success': False, 'error': '文件不存在'})
         if not safe_name.lower().endswith(('.docx', '.doc')):
-            return jsonify({'success': False, 'error': '仅支持 .doc / .docx 格式'})
+            return jsonify({'success': False, 'error': '当前系统仅支持 .docx 格式。请用 WPS 或 Word 将文件另存为 .docx 后重新放入 docs 文件夹。'})
 
         safe_id = re.sub(r'[\\/:*?"<>|]', '_', safe_name.rsplit('.', 1)[0])[:50]
         content_md5 = _file_md5_path(filepath)
