@@ -350,11 +350,16 @@ def list_parsed_images(task_id):
     all_images = request.args.get('all', '').lower() == 'true'
     parsed_task_dir = _parsed_dir(task_id)
 
-    # 加载任务数据获取分类信息
+    # 加载任务数据获取分类信息 + 改名映射
     task_data = task_service.load_task(Config.TASKS_DIR, task_id)
     image_meta = {}
+    parsed_to_original = {}
     if task_data:
         for img in task_data.get('images', []):
+            parsed = img.get('parsed_filename', '')
+            orig = img.get('filename', '')
+            if parsed and orig and parsed != orig:
+                parsed_to_original[parsed] = orig
             meta = {
                 'guessed_category': img.get('manual_label') or img.get('guessed_category', '其他'),
                 'classification_confidence': img.get('classification_confidence', 0.0),
@@ -362,7 +367,7 @@ def list_parsed_images(task_id):
                 'page_number': img.get('page_number', 1),
                 'index': img.get('index', 0),
             }
-            for key in [img.get('parsed_filename'), img.get('filename')]:
+            for key in [parsed, orig]:
                 if key:
                     image_meta[key] = meta
 
@@ -387,6 +392,11 @@ def list_parsed_images(task_id):
                 'page_number': meta.get('page_number', 1),
                 'index': meta.get('index', 0),
             })
+
+        # 把已分类图片对应的原始文件名也加入去重集合
+        for fname in list(seen_names):
+            if fname in parsed_to_original:
+                seen_names.add(parsed_to_original[fname])
 
     # all=true: 追加 images 目录中未被列入 parsed_images 的原始图片
     if all_images:

@@ -29,6 +29,29 @@
         </span>
         <el-tag v-if="serverMode" size="small" type="success" effect="plain">解析文件模式</el-tag>
       </div>
+      <div class="toolbar-right" v-if="imageFiles.length || serverImages.length">
+        <el-button size="small" :disabled="!hasPreviousImage" @click="showPreviousImage">
+          <el-icon><ArrowLeft /></el-icon>
+          上一张
+        </el-button>
+        <div class="jump-control">
+          <span class="jump-label">跳转至第</span>
+          <input
+            class="jump-input"
+            type="number"
+            :min="1"
+            :max="totalImageCount"
+            v-model.number="jumpIndex"
+            @keyup.enter="goToImage"
+          />
+          <span class="jump-label">张</span>
+          <el-button size="small" type="primary" plain @click="goToImage">跳转</el-button>
+        </div>
+        <el-button size="small" :disabled="!hasNextImage" @click="showNextImage">
+          下一张
+          <el-icon><ArrowRight /></el-icon>
+        </el-button>
+      </div>
     </div>
 
     <div class="workspace" v-if="imageFiles.length || serverImages.length">
@@ -560,6 +583,7 @@ const selectImage = async (idx: number) => {
   const total = totalImageCount.value
   if (idx < 0 || idx >= total) return
   currentImageIndex.value = idx
+  jumpIndex.value = idx + 1
   clearResults()
 
   if (serverMode.value) {
@@ -584,6 +608,16 @@ const selectImage = async (idx: number) => {
 
 const showPreviousImage = () => { if (hasPreviousImage.value) selectImage(currentImageIndex.value - 1) }
 const showNextImage = () => { if (hasNextImage.value) selectImage(currentImageIndex.value + 1) }
+
+const jumpIndex = ref(1)
+const goToImage = () => {
+  const idx = jumpIndex.value - 1
+  if (idx >= 0 && idx < totalImageCount.value) {
+    selectImage(idx)
+  } else {
+    ElMessage.warning(`请输入 1 ~ ${totalImageCount.value} 之间的数字`)
+  }
+}
 
 const handleDetect = async () => {
   if (serverMode.value) {
@@ -712,6 +746,16 @@ onUnmounted(() => {
 .file-count { font-size: 13px; color: #64748b; }
 
 .toolbar-right { display: flex; align-items: center; gap: 12px; }
+
+.jump-control { display: flex; align-items: center; gap: 6px; }
+.jump-label { font-size: 12px; color: #64748b; white-space: nowrap; }
+.jump-input {
+  width: 60px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px;
+  font-size: 13px; text-align: center; color: #1e293b; outline: none;
+}
+.jump-input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,.15); }
+.jump-input::-webkit-inner-spin-button,
+.jump-input::-webkit-outer-spin-button { opacity: 1; }
 
 .workspace { display: flex; gap: 16px; min-height: calc(100vh - 200px); }
 
