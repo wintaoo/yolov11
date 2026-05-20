@@ -5,7 +5,7 @@
         <el-icon :size="18"><FolderOpened /></el-icon>
         <span>检测到已解析的投标文件：<strong>{{ parsedInfo.doc_name || parsedInfo.task_id }}</strong>，共 <strong>{{ parsedInfo.image_count }}</strong> 张图片</span>
       </div>
-      <el-button size="small" type="primary" @click="loadFromParsedFolder">
+      <el-button size="small" type="primary" @click="loadFilteredFromParsedFolder">
         <el-icon><FolderOpened /></el-icon>
         加载布置图
       </el-button>
@@ -21,12 +21,22 @@
         <el-button
           v-if="parsedInfo && !serverMode"
           size="small"
-          type="success"
+          type="primary"
           plain
-          @click="loadFromParsedFolder"
+          @click="loadAllFromParsedFolder"
         >
           <el-icon><FolderOpened /></el-icon>
-          从解析文件加载
+          加载所有图片
+        </el-button>
+        <el-button
+          v-if="parsedInfo && !serverMode"
+          size="small"
+          type="success"
+          plain
+          @click="loadFilteredFromParsedFolder"
+        >
+          <el-icon><FolderOpened /></el-icon>
+          只加载有类别图片
         </el-button>
         <el-button
           size="small"
@@ -196,10 +206,20 @@
           v-if="parsedInfo"
           type="primary"
           size="large"
-          @click="loadFromParsedFolder"
+          @click="loadAllFromParsedFolder"
         >
           <el-icon><FolderOpened /></el-icon>
-          从解析文件加载 ({{ parsedInfo.image_count }} 张)
+          加载所有图片 ({{ parsedInfo.image_count }} 张)
+        </el-button>
+        <el-button
+          v-if="parsedInfo"
+          type="success"
+          size="large"
+          plain
+          @click="loadFilteredFromParsedFolder"
+        >
+          <el-icon><FolderOpened /></el-icon>
+          只加载有类别图片
         </el-button>
         <label class="hero-btn">
           <el-icon :size="20"><FolderAdd /></el-icon>
@@ -402,45 +422,6 @@ const processDocsFile = async () => {
   }
 }
 
-const loadFromParsedFolderById = async (tid: string) => {
-  try {
-    const res = await axios.get(`/api/docx/parsed-images/${tid}`)
-    if (res.data.success && res.data.images.length > 0) {
-      serverMode.value = true
-      parsedTaskId.value = res.data.task_id
-      // Update parsedInfo with full data from parsed-folder
-      try {
-        const folderRes = await axios.get('/api/docx/parsed-folder')
-        if (folderRes.data.success) {
-          parsedInfo.value = folderRes.data
-          parsedFolder.value = folderRes.data.folder || parsedFolder.value
-        }
-      } catch {}
-      serverImages.value = res.data.images
-        .filter((img: any) => {
-          const cat = img.guessed_category || ''
-          return cat && cat !== '其他' && cat !== '未分类'
-        })
-        .map((img: any) => ({
-          ...img,
-          figure_name: img.figure_name || '',
-          guessed_category: img.guessed_category || '其他',
-          classification_confidence: img.classification_confidence || 0,
-          page_number: img.page_number || 1,
-        }))
-      imageFiles.value = []
-      clearResults()
-      currentImageIndex.value = 0
-      selectImage(0)
-      ElMessage.success(`已加载 ${serverImages.value.length} 张布置图（已过滤无类别）`)
-    } else {
-      ElMessage.warning('解析文件夹中没有图片')
-    }
-  } catch (err: any) {
-    ElMessage.error('加载解析图片失败')
-  }
-}
-
 const categoryColors: Record<string, string> = {
   '垂直运输机械': '#ef4444',
   '施工机械': '#f97316',
@@ -502,32 +483,86 @@ const fetchParsedFolder = async () => {
   } catch {}
 }
 
-const loadFromParsedFolder = async () => {
+const loadImagesFromParsed = async (filtered: boolean) => {
   if (!parsedInfo.value) return
   try {
     const res = await axios.get(`/api/docx/parsed-images/${parsedInfo.value.task_id}`)
     if (res.data.success && res.data.images.length > 0) {
-      // Switch to server mode — 只加载有明确类别的图
       serverMode.value = true
       parsedTaskId.value = res.data.task_id
       parsedFolder.value = parsedInfo.value.folder
-      serverImages.value = res.data.images
-        .filter((img: any) => {
+
+      let images = res.data.images
+      if (filtered) {
+        images = images.filter((img: any) => {
           const cat = img.guessed_category || ''
           return cat && cat !== '其他' && cat !== '未分类'
         })
-        .map((img: any) => ({
-          ...img,
-          figure_name: img.figure_name || '',
-          guessed_category: img.guessed_category || '其他',
-          classification_confidence: img.classification_confidence || 0,
-          page_number: img.page_number || 1,
-        }))
+      }
+
+      serverImages.value = images.map((img: any) => ({
+        ...img,
+        figure_name: img.figure_name || '',
+        guessed_category: img.guessed_category || '其他',
+        classification_confidence: img.classification_confidence || 0,
+        page_number: img.page_number || 1,
+      }))
       imageFiles.value = []
       clearResults()
       currentImageIndex.value = 0
       selectImage(0)
-      ElMessage.success(`已加载 ${serverImages.value.length} 张布置图（已过滤无类别）`)
+      const msg = filtered
+        ? `已加载 ${serverImages.value.length} 张布置图（已过滤无类别）`
+        : `已加载全部 ${serverImages.value.length} 张图片`
+      ElMessage.success(msg)
+    } else {
+      ElMessage.warning('解析文件夹中没有图片')
+    }
+  } catch (err: any) {
+    ElMessage.error('加载解析图片失败')
+  }
+}
+
+const loadAllFromParsedFolder = () => loadImagesFromParsed(false)
+const loadFilteredFromParsedFolder = () => loadImagesFromParsed(true)
+
+const loadFromParsedFolderById = async (tid: string, filtered: boolean = true) => {
+  try {
+    const res = await axios.get(`/api/docx/parsed-images/${tid}`)
+    if (res.data.success && res.data.images.length > 0) {
+      serverMode.value = true
+      parsedTaskId.value = res.data.task_id
+      try {
+        const folderRes = await axios.get('/api/docx/parsed-folder')
+        if (folderRes.data.success) {
+          parsedInfo.value = folderRes.data
+          parsedFolder.value = folderRes.data.folder || parsedFolder.value
+        }
+      } catch {}
+
+      let images = res.data.images
+      if (filtered) {
+        images = images.filter((img: any) => {
+          const cat = img.guessed_category || ''
+          return cat && cat !== '其他' && cat !== '未分类'
+        })
+      }
+
+      serverImages.value = images.map((img: any) => ({
+        ...img,
+        figure_name: img.figure_name || '',
+        guessed_category: img.guessed_category || '其他',
+        classification_confidence: img.classification_confidence || 0,
+        page_number: img.page_number || 1,
+      }))
+      imageFiles.value = []
+      clearResults()
+      currentImageIndex.value = 0
+      selectImage(0)
+      const msg = filtered
+        ? `已加载 ${serverImages.value.length} 张布置图（已过滤无类别）`
+        : `已加载全部 ${serverImages.value.length} 张图片`
+      ElMessage.success(msg)
     } else {
       ElMessage.warning('解析文件夹中没有图片')
     }
@@ -537,6 +572,9 @@ const loadFromParsedFolder = async () => {
 }
 
 const handleFolderSelect = (event: Event) => {
+
+
+
   const target = event.target as HTMLInputElement
   const files = Array.from(target.files || []).filter(f => isImageFile(f.name))
   if (!files.length) { ElMessage.warning('未找到图片文件'); return }

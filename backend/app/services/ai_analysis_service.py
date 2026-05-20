@@ -408,3 +408,140 @@ def analyze_image_with_ai(image_path, context_text=""):
     logger.error(f"[分析] {filename} 所有尝试失败 (原因:{reason}), 降级. 最后错误: {last_error}")
     result = _build_fallback(last_raw, context_text, guessed_category, reason)
     return result
+
+
+def _safe_str(val):
+    """Normalize AI result value to string."""
+    if isinstance(val, dict):
+        parts = [f'{k}: {v}' for k, v in val.items()]
+        return '；'.join(parts)
+    if isinstance(val, list):
+        return '；'.join(str(v) for v in val)
+    if not isinstance(val, str):
+        return str(val)
+    return val
+
+
+def _json_to_markdown(result: dict, figure_name: str = "", context_before: str = "", context_after: str = "") -> str:
+    """Convert AI JSON analysis result to a structured markdown report."""
+    lines = []
+
+    # 标题
+    title = f"# AI 图纸分析报告"
+    if figure_name and figure_name != '图后无文字':
+        title += f" — {figure_name}"
+    lines.append(title)
+    lines.append("")
+
+    # 1. 图纸基本信息
+    image_type = result.get('image_type', '未识别')
+    drawing_name = result.get('drawing_name', '')
+    has_drawing = result.get('has_drawing', False)
+    lines.append("## 1. 图纸基本信息")
+    lines.append(f"- **图纸类型**: {image_type}")
+    if drawing_name:
+        lines.append(f"- **图纸名称**: {drawing_name}")
+    lines.append(f"- **含图纸**: {'是' if has_drawing else '否'}")
+    lines.append("")
+
+    # 2. 图纸内容概述
+    summary = _safe_str(result.get('summary', '未提供'))
+    lines.append("## 2. 图纸内容概述")
+    lines.append(summary)
+    lines.append("")
+
+    # 3. 关键要素清单
+    elements = result.get('elements', {}) or {}
+    recognized_items = elements.get('recognized_items', []) or []
+    facilities = elements.get('facilities', {}) or {}
+    lines.append("## 3. 关键要素清单")
+    if recognized_items:
+        lines.append("### 识别要素")
+        for item in recognized_items:
+            lines.append(f"- {item}")
+        lines.append("")
+    if facilities:
+        lines.append("### 设施统计")
+        for name, count in facilities.items():
+            lines.append(f"- **{name}**: {count}")
+        lines.append("")
+    if not recognized_items and not facilities:
+        lines.append("（图中未识别到明确的要素或设施信息）")
+        lines.append("")
+
+    # 4. 施工要点分析
+    schedule = result.get('construction_schedule', {}) or {}
+    dims = result.get('dimensions_specs', {}) or {}
+    lines.append("## 4. 施工要点分析")
+    has_content = False
+    if schedule.get('has_schedule'):
+        has_content = True
+        lines.append("### 施工计划")
+        lines.append(f"- **开始日期**: {schedule.get('start_date', '未知')}")
+        lines.append(f"- **结束日期**: {schedule.get('end_date', '未知')}")
+        tasks = schedule.get('tasks', []) or []
+        for task in tasks:
+            lines.append(f"  - {task.get('name', '')}: {task.get('start', '')} ~ {task.get('end', '')} ({task.get('duration', '')})")
+        lines.append("")
+    if dims.get('found'):
+        has_content = True
+        lines.append("### 尺寸规格")
+        for item in dims.get('items', []) or []:
+            parts = [item.get('name', '')]
+            if item.get('dimension'):
+                parts.append(f"尺寸: {item['dimension']}")
+            if item.get('model'):
+                parts.append(f"型号: {item['model']}")
+            if item.get('quantity'):
+                parts.append(f"数量: {item['quantity']}")
+            lines.append(f"- {' | '.join(parts)}")
+        lines.append("")
+    if not has_content:
+        lines.append("（图中未识别到明确的施工计划或尺寸规格信息）")
+        lines.append("")
+
+    # 5. 规范性评估
+    evaluation = _safe_str(result.get('evaluation', '未提供评估信息'))
+    lines.append("## 5. 规范性评估")
+    lines.append(evaluation)
+    lines.append("")
+
+    # 6. 文档上下文参考
+    if context_before or context_after:
+        lines.append("## 6. 文档上下文参考")
+        if context_before:
+            lines.append(f"**上文**: {context_before[:200]}")
+        if context_after:
+            lines.append(f"**下文**: {context_after[:200]}")
+        lines.append("")
+
+    # 页脚
+    from datetime import datetime
+    lines.append("---")
+    lines.append(f"> 分析时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  \n> 分析模型: 多模态视觉大模型（SiliconFlow）")
+
+    return "\n".join(lines)
+
+
+def analyze_image_markdown_report(image_path: str, context_text: str = "", figure_name: str = "",
+                                   context_before: str = "", context_after: str = "") -> dict:
+    """Analyze image and return a markdown-formatted report.
+
+    Wraps analyze_image_with_ai and converts the structured JSON result to readable markdown.
+    """
+    try:
+        json_result = analyze_image_with_ai(image_path, context_text)
+        md = _json_to_markdown(json_result, figure_name, context_before, context_after)
+        return {
+            'success': True,
+            'json': json_result,
+            'markdown': md,
+        }
+    except Exception as e:
+        logger.error(f"Markdown报告生成失败: {e}", exc_info=True)
+        return {
+            'success': False,
+            'json': {},
+            'markdown': f"# AI分析失败\n\n分析过程中出现错误: {str(e)}\n\n请稍后重试。",
+            'error': str(e),
+        }

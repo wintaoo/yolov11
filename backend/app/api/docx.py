@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app, send_file
 from backend.app.services.docx_service import extract_images_from_docx, guess_category_from_context, guess_category_with_confidence
+from backend.app.services.ai_analysis_service import analyze_image_markdown_report
 from backend.app.services import task_service
 from backend.app.config import Config
 import os
@@ -708,4 +709,107 @@ def update_image_label(task_id):
 
     except Exception as e:
         logger.error(f"更新标签失败: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@docx_bp.route('/analyze-image/<task_id>/<int:image_index>', methods=['POST'])
+def analyze_single_image(task_id, image_index):
+    """使用多模态AI分析单张图片并生成报告，结果持久化保存"""
+    try:
+        task_data = task_service.load_task(Config.TASKS_DIR, task_id)
+        if not task_data:
+            return jsonify({'success': False, 'error': '任务不存在'})
+
+        image_info = None
+        for img in task_data.get('images', []):
+            if img['index'] == image_index:
+                image_info = img
+                break
+
+        if not image_info:
+            return jsonify({'success': False, 'error': f'图片 #{image_index} 不存在'})
+
+        # 定位图片文件
+        image_path = None
+        parsed_candidate = os.path.join(_parsed_dir(task_id), image_info.get('parsed_filename', ''))
+        if os.path.exists(parsed_candidate):
+            image_path = parsed_candidate
+        else:
+            images_candidate = os.path.join(_images_dir(task_id), image_info.get('filename', ''))
+            if os.path.exists(images_candidate):
+                image_path = images_candidate
+
+        if not image_path:
+            return jsonify({'success': False, 'error': '图片文件不存在于磁盘'})
+
+        # 构造上下文
+        figure_name = image_info.get('figure_name', '') or ''
+        context_before = image_info.get('context_before', '') or ''
+        context_after = image_info.get('context_after', '') or ''
+        context_parts = []
+        if figure_name and figure_name != '图后无文字':
+            context_parts.append(f"图片标题: {figure_name}")
+        if context_before:
+            context_parts.append(f"文档上文: {context_before[:200]}")
+        if context_after:
+            context_parts.append(f"文档下文: {context_after[:200]}")
+        context_text = '\n'.join(context_parts)
+
+        # AI 分析
+        result = analyze_image_markdown_report(
+            image_path, context_text, figure_name,
+            context_before[:300], context_after[:300]
+        )
+
+        if not result.get('success'):
+            return jsonify({'success': False, 'error': result.get('error', 'AI分析失败')})
+
+        # 持久化
+        task_dir = _task_dir(task_id)
+        report_filename = f"analysis_{image_index:03d}.json"
+        report_path = os.path.join(task_dir, report_filename)
+        with open(report_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                'task_id': task_id,
+                'image_index': image_index,
+                'figure_name': figure_name,
+                'markdown': result.get('markdown', ''),
+                'created_at': datetime.now().isoformat(),
+            }, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"AI分析报告已保存: {task_id}/#{image_index}")
+        return jsonify({
+            'success': True,
+            'report': result.get('markdown', ''),
+            'image_index': image_index,
+        })
+
+    except Exception as e:
+        logger.error(f"图片AI分析失败 [{task_id}]#{image_index}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@docx_bp.route('/analysis-report/<task_id>/<int:image_index>', methods=['GET'])
+def get_analysis_report(task_id, image_index):
+    """读取已保存的AI分析报告"""
+    try:
+        report_filename = f"analysis_{image_index:03d}.json"
+        report_path = os.path.join(_task_dir(task_id), report_filename)
+
+        if not os.path.exists(report_path):
+            return jsonify({'success': True, 'found': False, 'image_index': image_index})
+
+        with open(report_path, 'r', encoding='utf-8') as f:
+            report_data = json.load(f)
+
+        return jsonify({
+            'success': True,
+            'found': True,
+            'report': report_data.get('markdown', ''),
+            'image_index': image_index,
+            'created_at': report_data.get('created_at', ''),
+        })
+
+    except Exception as e:
+        logger.error(f"读取分析报告失败 [{task_id}]#{image_index}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)})

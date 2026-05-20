@@ -204,7 +204,72 @@
             <span>点击左侧图片查看详情</span>
           </div>
         </div>
+
+        <!-- AI 分析面板 -->
+        <aside class="analysis-panel" v-if="selectedImage && showAnalysisPanel">
+          <div class="analysis-header">
+            <h3>
+              <el-icon :size="16"><DataAnalysis /></el-icon>
+              AI 图纸分析
+            </h3>
+            <div class="analysis-header-actions">
+              <el-button v-if="analysisState === 'loaded'" size="small" text title="复制报告" @click="copyReport">
+                <el-icon :size="16"><CopyDocument /></el-icon>
+              </el-button>
+              <el-button v-if="analysisState === 'loaded'" size="small" text title="导出MD" @click="exportReport">
+                <el-icon :size="16"><Download /></el-icon>
+              </el-button>
+              <el-button size="small" text title="关闭面板" @click="toggleAnalysisPanel">
+                <el-icon :size="16"><Close /></el-icon>
+              </el-button>
+            </div>
+          </div>
+
+          <div class="analysis-body">
+            <!-- 待分析 -->
+            <div v-if="analysisState === 'idle'" class="analysis-idle">
+              <el-icon :size="40" color="#6366f1"><DataAnalysis /></el-icon>
+              <p>点击下方按钮，AI 将自动识别图纸类型、关键要素并生成详细报告</p>
+              <p class="analysis-hint">分析包含文档上下文作为参考</p>
+              <el-button type="primary" @click="startAnalysis">
+                <el-icon><VideoPlay /></el-icon>
+                开始AI分析
+              </el-button>
+            </div>
+
+            <!-- 分析中 -->
+            <div v-if="analysisState === 'loading'" class="analysis-loading">
+              <div class="analysis-spinner"></div>
+              <p>{{ analysisLoadingMsg }}</p>
+              <p class="analysis-hint">首次分析约需 30-60 秒，请耐心等待</p>
+            </div>
+
+            <!-- 失败 -->
+            <div v-if="analysisError" class="analysis-error">
+              <el-icon :size="24" color="#dc2626"><WarningFilled /></el-icon>
+              <p>{{ analysisError }}</p>
+              <el-button size="small" type="primary" @click="startAnalysis">重试</el-button>
+            </div>
+
+            <!-- 报告 -->
+            <div v-if="analysisState === 'loaded' && analysisReport" class="analysis-content">
+              <div class="markdown-body" v-html="renderedReport"></div>
+            </div>
+          </div>
+        </aside>
       </div>
+
+      <!-- 浮动AI分析按钮 -->
+      <el-button
+        v-if="selectedImage && !showAnalysisPanel"
+        class="analysis-float-btn"
+        size="small"
+        type="primary"
+        @click="toggleAnalysisPanel"
+      >
+        <el-icon><DataAnalysis /></el-icon>
+        AI分析
+      </el-button>
 
       <div class="category-summary" v-if="Object.keys(categoryStats).length">
         <h4>图片分类统计（多信号融合匹配）</h4>
@@ -267,9 +332,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Upload, Picture, Clock, FolderOpened, Delete, Document, Edit, Check, CircleCheck, Loading, Folder } from '@element-plus/icons-vue'
+import { Upload, Picture, Clock, FolderOpened, Delete, Document, Edit, Check, CircleCheck, Loading, Folder, DataAnalysis, CopyDocument, Close, WarningFilled, VideoPlay } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
+import { marked } from 'marked'
+
+// Configure marked for safe rendering
+marked.setOptions({ breaks: true, gfm: true })
 
 const PREDEFINED_CATEGORIES = [
   '周边环境图', '进度计划图', '分区规划图', '基础结构图',
@@ -299,6 +368,19 @@ const docsFiles = ref<any[]>([])
 const docsLoading = ref(false)
 const selectedDocsFile = ref('')
 const docsFolder = ref('')
+
+// AI Analysis Panel
+const showAnalysisPanel = ref(false)
+const analysisState = ref<'idle' | 'loading' | 'loaded'>('idle')
+const analysisReport = ref('')
+const analysisError = ref('')
+const analysisLoadingMsg = ref('')
+let analysisAbortController: AbortController | null = null
+
+const renderedReport = computed(() => {
+  if (!analysisReport.value) return ''
+  return marked.parse(analysisReport.value) as string
+})
 
 // Manual labeling
 const labelSaving = ref(false)
@@ -612,12 +694,101 @@ const clearLabel = async () => {
   }
 }
 
+// AI Analysis functions
+const checkExistingReport = async (tid: string, imgIdx: number) => {
+  if (!tid || imgIdx == null) return
+  try {
+    const res = await axios.get(`/api/docx/analysis-report/${tid}/${imgIdx}`)
+    if (res.data.success && res.data.found && res.data.report) {
+      analysisReport.value = res.data.report
+      analysisState.value = 'loaded'
+      showAnalysisPanel.value = true
+    } else {
+      analysisState.value = 'idle'
+      analysisReport.value = ''
+      showAnalysisPanel.value = false
+    }
+  } catch {
+    analysisState.value = 'idle'
+    analysisReport.value = ''
+  }
+}
+
+const startAnalysis = async () => {
+  if (!taskId.value || !selectedImage.value) return
+  if (analysisAbortController) { analysisAbortController.abort() }
+  analysisAbortController = new AbortController()
+  analysisState.value = 'loading'
+  analysisError.value = ''
+  analysisReport.value = ''
+  showAnalysisPanel.value = true
+  analysisLoadingMsg.value = 'AI 正在分析图纸，预计 30-60 秒...'
+  try {
+    const res = await axios.post(
+      `/api/docx/analyze-image/${taskId.value}/${selectedImage.value.index}`,
+      {}, { signal: analysisAbortController.signal }
+    )
+    if (res.data.success && res.data.report) {
+      analysisReport.value = res.data.report
+      analysisState.value = 'loaded'
+    } else {
+      analysisError.value = res.data.error || '分析失败，请重试'
+      analysisState.value = 'idle'
+    }
+  } catch (err: any) {
+    if (err.name === 'CanceledError' || err.name === 'AbortError') return
+    analysisError.value = err.response?.data?.error || err.message || '请求失败'
+    analysisState.value = 'idle'
+  } finally {
+    analysisAbortController = null
+  }
+}
+
+const copyReport = async () => {
+  if (!analysisReport.value) return
+  try {
+    await navigator.clipboard.writeText(analysisReport.value)
+    ElMessage.success('报告已复制到剪贴板')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
+
+const exportReport = () => {
+  if (!analysisReport.value) return
+  const blob = new Blob([analysisReport.value], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `analysis_${taskId.value}_${selectedImage.value?.index || 'unknown'}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const toggleAnalysisPanel = () => {
+  showAnalysisPanel.value = !showAnalysisPanel.value
+}
+
+const resetAnalysis = () => {
+  if (analysisAbortController) { analysisAbortController.abort(); analysisAbortController = null }
+  showAnalysisPanel.value = false
+  analysisState.value = 'idle'
+  analysisReport.value = ''
+  analysisError.value = ''
+  analysisLoadingMsg.value = ''
+}
+
 const selectImage = (img: any) => {
   selectedImg.value = img.index
   selectedImage.value = img
+  resetAnalysis()
+  if (taskId.value) {
+    checkExistingReport(taskId.value, img.index)
+  }
 }
 
 const resetTask = () => {
+  resetAnalysis()
   taskId.value = ''
   images.value = []
   categoryStats.value = {}
@@ -841,4 +1012,53 @@ onMounted(() => {
 .docs-file-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .docs-file-name { font-size: 14px; font-weight: 500; color: #1e293b; }
 .docs-file-size { font-size: 12px; color: #94a3b8; }
+
+/* AI Analysis Panel */
+.analysis-panel {
+  width: 420px; flex-shrink: 0; background: white; border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  display: flex; flex-direction: column;
+  max-height: calc(100vh - 260px); overflow: hidden;
+}
+.analysis-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid #f1f5f9; flex-shrink: 0;
+}
+.analysis-header h3 {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; color: #1e293b; font-weight: 700;
+}
+.analysis-header-actions { display: flex; gap: 4px; }
+.analysis-body { flex: 1; overflow-y: auto; padding: 16px; }
+
+.analysis-idle, .analysis-loading, .analysis-error {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; padding: 40px 20px;
+  text-align: center; color: #64748b; font-size: 14px; min-height: 250px;
+}
+.analysis-hint { font-size: 12px; color: #94a3b8; }
+.analysis-spinner {
+  width: 36px; height: 36px; border: 3px solid #e0e7ff;
+  border-top-color: #6366f1; border-radius: 50%;
+  animation: a-spin .7s linear infinite;
+}
+@keyframes a-spin { to { transform: rotate(360deg); } }
+.analysis-error p { color: #dc2626; }
+
+.analysis-content { padding: 4px 0; }
+.markdown-body { font-size: 14px; line-height: 1.75; color: #334155; }
+.markdown-body h1 { font-size: 18px; font-weight: 700; color: #1e293b; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 2px solid #eef2ff; }
+.markdown-body h2 { font-size: 15px; font-weight: 700; color: #4f46e5; margin: 20px 0 8px; }
+.markdown-body h3 { font-size: 14px; font-weight: 600; color: #475569; margin: 14px 0 6px; }
+.markdown-body p { margin: 0 0 8px; }
+.markdown-body ul, .markdown-body ol { padding-left: 20px; margin: 0 0 8px; }
+.markdown-body li { margin-bottom: 4px; }
+.markdown-body strong { color: #1e293b; font-weight: 600; }
+.markdown-body blockquote { border-left: 3px solid #818cf8; padding: 4px 12px; color: #64748b; margin: 12px 0; }
+.markdown-body hr { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
+
+.analysis-float-btn {
+  position: fixed; right: 28px; bottom: 28px; z-index: 50;
+  box-shadow: 0 4px 14px rgba(99,102,241,.35);
+}
 </style>
