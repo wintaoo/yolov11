@@ -1,19 +1,29 @@
 <template>
   <div class="detection-panel">
-    <div class="parsed-banner" v-if="parsedInfo && !serverMode && !imageFiles.length">
-      <div class="parsed-banner-left">
-        <el-icon :size="18"><FolderOpened /></el-icon>
-        <span>检测到已解析的投标文件：<strong>{{ parsedInfo.doc_name || parsedInfo.task_id }}</strong>，共 <strong>{{ parsedInfo.image_count }}</strong> 张图片</span>
-      </div>
-      <div class="parsed-banner-actions">
-        <el-button size="small" type="primary" plain @click="loadAllFromParsedFolder">
-          <el-icon><FolderOpened /></el-icon>
-          加载所有图片
-        </el-button>
-        <el-button size="small" type="success" plain @click="loadFilteredFromParsedFolder">
-          <el-icon><FolderOpened /></el-icon>
-          只加载有类别图片
-        </el-button>
+    <div class="parsed-tasks" v-if="parsedTasks.length > 0 && !serverMode && !imageFiles.length">
+      <div
+        v-for="t in parsedTasks"
+        :key="t.task_id"
+        class="parsed-banner"
+      >
+        <div class="parsed-banner-left">
+          <el-icon :size="18"><FolderOpened /></el-icon>
+          <span>
+            检测到已解析文件：<strong>{{ t.original_filename }}</strong>，
+            共 <strong>{{ t.total_images }}</strong> 张图片，
+            已分类 <strong>{{ t.classified_count || 0 }}</strong> 张
+          </span>
+        </div>
+        <div class="parsed-banner-actions">
+          <el-button size="small" type="primary" plain @click="loadAllFromParsedTask(t.task_id)">
+            <el-icon><FolderOpened /></el-icon>
+            加载所有图片
+          </el-button>
+          <el-button size="small" type="success" plain @click="loadFilteredFromParsedTask(t.task_id)">
+            <el-icon><FolderOpened /></el-icon>
+            只加载有类别图片
+          </el-button>
+        </div>
       </div>
     </div>
 
@@ -188,25 +198,6 @@
       <h2 class="hero-title">布置图检测</h2>
       <p class="hero-desc">先在"投标文件解析"中上传 .docx 文件，然后在此加载布置图进行检测，也支持直接打开本地图片文件夹</p>
       <div class="hero-actions">
-        <el-button
-          v-if="parsedInfo"
-          type="primary"
-          size="large"
-          @click="loadAllFromParsedFolder"
-        >
-          <el-icon><FolderOpened /></el-icon>
-          加载所有图片 ({{ parsedInfo.image_count }} 张)
-        </el-button>
-        <el-button
-          v-if="parsedInfo"
-          type="success"
-          size="large"
-          plain
-          @click="loadFilteredFromParsedFolder"
-        >
-          <el-icon><FolderOpened /></el-icon>
-          只加载有类别图片
-        </el-button>
         <label class="hero-btn">
           <el-icon :size="20"><FolderAdd /></el-icon>
           <span>选择本地图片文件夹</span>
@@ -270,7 +261,7 @@ const folderInput = ref<HTMLInputElement | null>(null)
 const folderInput2 = ref<HTMLInputElement | null>(null)
 
 interface FileNode { name: string; path: string; type: 'file' | 'directory'; children?: FileNode[]; raw?: File }
-interface ServerImage { filename: string; size: number; url: string; figure_name?: string; guessed_category?: string; page_number?: number; index?: number }
+interface ServerImage { filename: string; size: number; url: string; filepath?: string; figure_name?: string; guessed_category?: string; page_number?: number; index?: number }
 interface DetectionItem { class: string; confidence: number; bbox: number[]; category: string }
 
 const fileTreeData = ref<FileNode[]>([])
@@ -290,7 +281,7 @@ const serverMode = ref(false)
 const parsedTaskId = ref('')
 const parsedFolder = ref('')
 const serverImages = ref<ServerImage[]>([])
-const parsedInfo = ref<any>(null)
+const parsedTasks = ref<any[]>([])
 
 const totalImageCount = computed(() => {
   if (serverMode.value) return serverImages.value.length
@@ -460,24 +451,23 @@ const getAllImageFiles = (tree: FileNode[]): FileNode[] => {
   return files
 }
 
-const fetchParsedFolder = async () => {
+const fetchParsedTasks = async () => {
   try {
-    const res = await axios.get('/api/docx/parsed-folder')
+    const res = await axios.get('/api/docx/tasks')
     if (res.data.success) {
-      parsedInfo.value = res.data
+      parsedTasks.value = res.data.tasks || []
     }
   } catch {}
 }
 
-const loadImagesFromParsed = async (filtered: boolean) => {
-  if (!parsedInfo.value) return
+const loadImagesFromParsed = async (taskId: string, filtered: boolean) => {
   try {
     const params = filtered ? {} : { all: 'true' }
-    const res = await axios.get(`/api/docx/parsed-images/${parsedInfo.value.task_id}`, { params })
+    const res = await axios.get(`/api/docx/parsed-images/${taskId}`, { params })
     if (res.data.success && res.data.images.length > 0) {
       serverMode.value = true
-      parsedTaskId.value = res.data.task_id
-      parsedFolder.value = parsedInfo.value.folder
+      parsedTaskId.value = taskId
+      parsedFolder.value = ''
 
       let images = res.data.images
       if (filtered) {
@@ -510,8 +500,8 @@ const loadImagesFromParsed = async (filtered: boolean) => {
   }
 }
 
-const loadAllFromParsedFolder = () => loadImagesFromParsed(false)
-const loadFilteredFromParsedFolder = () => loadImagesFromParsed(true)
+const loadAllFromParsedTask = (taskId: string) => loadImagesFromParsed(taskId, false)
+const loadFilteredFromParsedTask = (taskId: string) => loadImagesFromParsed(taskId, true)
 
 const loadFromParsedFolderById = async (tid: string, filtered: boolean = true) => {
   try {
@@ -519,14 +509,8 @@ const loadFromParsedFolderById = async (tid: string, filtered: boolean = true) =
     const res = await axios.get(`/api/docx/parsed-images/${tid}`, { params })
     if (res.data.success && res.data.images.length > 0) {
       serverMode.value = true
-      parsedTaskId.value = res.data.task_id
-      try {
-        const folderRes = await axios.get('/api/docx/parsed-folder')
-        if (folderRes.data.success) {
-          parsedInfo.value = folderRes.data
-          parsedFolder.value = folderRes.data.folder || parsedFolder.value
-        }
-      } catch {}
+      parsedTaskId.value = tid
+      parsedFolder.value = ''
 
       let images = res.data.images
       if (filtered) {
@@ -633,7 +617,7 @@ const handleDetectServer = async () => {
   detecting.value = true
   const startTime = Date.now()
   try {
-    const filePath = parsedFolder.value + '/' + simg.filename
+    const filePath = simg.filepath || (parsedFolder.value + '/' + simg.filename)
     const response = await axios.post('/api/detection/detect-by-path', { file_path: filePath })
     if (response.data.success) {
       processingTime.value = Date.now() - startTime
@@ -706,7 +690,7 @@ const downloadResults = () => {
 }
 
 onMounted(() => {
-  fetchParsedFolder()
+  fetchParsedTasks()
 })
 
 onUnmounted(() => {
@@ -718,6 +702,8 @@ onUnmounted(() => {
 
 <style scoped>
 .detection-panel { display: flex; flex-direction: column; gap: 16px; }
+
+.parsed-tasks { display: flex; flex-direction: column; gap: 10px; }
 
 .parsed-banner {
   display: flex; align-items: center; justify-content: space-between;

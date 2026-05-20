@@ -386,6 +386,7 @@ def list_parsed_images(task_id):
                 'filename': fname,
                 'size': os.path.getsize(fpath),
                 'url': f'/api/docx/parsed-image/{task_id}/{fname}',
+                'filepath': fpath,
                 'guessed_category': meta.get('guessed_category', ''),
                 'classification_confidence': meta.get('classification_confidence', 0.0),
                 'figure_name': meta.get('figure_name', ''),
@@ -413,6 +414,7 @@ def list_parsed_images(task_id):
                     'filename': fname,
                     'size': os.path.getsize(fpath),
                     'url': f'/api/docx/image/{task_id}/{fname}',
+                    'filepath': fpath,
                     'guessed_category': meta.get('guessed_category', ''),
                     'classification_confidence': meta.get('classification_confidence', 0.0),
                     'figure_name': meta.get('figure_name', ''),
@@ -498,6 +500,12 @@ def get_image(task_id, filename):
 def list_tasks():
     try:
         tasks = task_service.list_tasks(Config.TASKS_DIR)
+        for t in tasks:
+            pd = _parsed_dir(t['task_id'])
+            if os.path.isdir(pd):
+                t['classified_count'] = len([f for f in os.listdir(pd) if os.path.isfile(os.path.join(pd, f)) and not f.startswith('.')])
+            else:
+                t['classified_count'] = 0
         return jsonify({'success': True, 'tasks': tasks})
     except Exception as e:
         logger.error(f"列出任务失败: {e}")
