@@ -96,6 +96,7 @@
             class="image-card"
             :class="{ selected: selectedImg === img.index, 'has-manual-label': !!img.manual_label }"
             @click="selectImage(img)"
+            @dblclick="openPreview(img)"
           >
             <img :src="`/api/docx/image/${taskId}/${img.filename}`" class="card-img" loading="lazy" />
             <div class="card-info">
@@ -310,6 +311,13 @@
           解析此文件
         </el-button>
       </template>
+    </el-dialog>
+
+    <!-- 图片放大预览 -->
+    <el-dialog v-model="previewVisible" :title="previewImage?.figure_name || '图片预览'" width="95%" top="2vh" :close-on-click-modal="true" destroy-on-close>
+      <div class="preview-dialog-body">
+        <img :src="`/api/docx/image/${taskId}/${previewImage?.filename}`" class="preview-dialog-img" />
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -782,6 +790,15 @@ const resetAnalysis = () => {
   analysisLoadingMsg.value = ''
 }
 
+// 图片放大预览
+const previewVisible = ref(false)
+const previewImage = ref<any>(null)
+
+const openPreview = (img: any) => {
+  previewImage.value = img
+  previewVisible.value = true
+}
+
 const selectImage = (img: any) => {
   selectedImg.value = img.index
   selectedImage.value = img
@@ -1065,5 +1082,8 @@ onMounted(() => {
 .markdown-body th { background: #f1f5f9; padding: 6px 10px; text-align: left; font-weight: 600; color: #475569; border: 1px solid #e2e8f0; }
 .markdown-body td { padding: 5px 10px; border: 1px solid #e2e8f0; color: #334155; }
 .markdown-body em { color: #94a3b8; }
+
+.preview-dialog-body { display: flex; align-items: center; justify-content: center; background: #0f172a; border-radius: 8px; padding: 16px; }
+.preview-dialog-img { max-width: 100%; max-height: 85vh; object-fit: contain; border-radius: 4px; }
 
 </style>
