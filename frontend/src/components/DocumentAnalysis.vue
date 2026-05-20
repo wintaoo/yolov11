@@ -226,6 +226,11 @@
             </div>
           </div>
 
+          <div class="analysis-disclaimer">
+            <el-icon :size="14"><WarningFilled /></el-icon>
+            <span>基于视觉大模型和图片上下文生成，内容可能有误，请仔细甄别</span>
+          </div>
+
           <div class="analysis-body">
             <div v-if="analysisState === 'idle'" class="analysis-idle">
               <el-icon :size="40" color="#6366f1"><DataAnalysis /></el-icon>
@@ -1051,6 +1056,11 @@ onMounted(() => {
   font-size: 14px; color: #1e293b; font-weight: 700;
 }
 .analysis-header-actions { display: flex; gap: 4px; }
+.analysis-disclaimer {
+  display: flex; align-items: center; gap: 6px; padding: 6px 16px;
+  background: #fff7ed; border-top: 1px solid #fed7aa; border-bottom: 1px solid #fed7aa;
+  font-size: 11px; color: #c2410c; flex-shrink: 0;
+}
 .analysis-body { flex: 1; overflow-y: auto; padding: 16px; }
 
 .analysis-idle, .analysis-loading, .analysis-error {
